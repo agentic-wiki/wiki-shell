@@ -2,7 +2,7 @@
 
 All notable changes to `wikiview` are documented here. This project follows [semantic versioning](https://semver.org); while pre-1.0, breaking changes bump the minor version.
 
-## Unreleased
+## v0.9.0 - v0.13.0 — 2026-10-14
 
 ### New
 
@@ -25,6 +25,7 @@ All notable changes to `wikiview` are documented here. This project follows [sem
 ### Fixed
 
 - **Nested folders in the tree indent further in.** A subfolder's entries started 3px left of the entries above them, so deeper levels looked shallower. Each level is now 12px further in than the one above, and a folder's name lines up with the entries beside it.
+- **A folder with an `index.md` closes when its name is clicked.** Its listing redirects to the index, and arriving there reopened the folder the click had just closed, so root folders flickered shut and open again. Opening a folder's index now leaves that folder as it is.
 - **The git popover opens over a side panel.** With a card or node open beside a board or graph, the Source control popover opened underneath it. The header it opens from was layered below the panel, which capped the popover too.
 
 ## v0.8.0 — 2026-09-10
