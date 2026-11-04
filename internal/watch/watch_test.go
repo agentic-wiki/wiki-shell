@@ -49,7 +49,23 @@ func start(t *testing.T) (dir string, fired *atomic.Int64) {
 	}()
 	t.Cleanup(func() { cancel(); <-done })
 
-	time.Sleep(quiet) // let the watch register before the test writes
+	// Wait until the watch is live: a write made before it registers is never
+	// seen, so a fixed sleep here fails under load. A probe write is repeated
+	// until one fires, which proves it; then, once that window has passed, the
+	// count starts again from zero.
+	for deadline := time.Now().Add(5 * time.Second); fired.Load() == 0; {
+		if time.Now().After(deadline) {
+			t.Fatal("the watcher never reported the probe write")
+		}
+		write(t, filepath.Join(dir, "probe.md"), "probe")
+		time.Sleep(quiet * 2)
+	}
+	time.Sleep(quiet * 2)
+	fired.Store(0)
+	time.Sleep(quiet * 2)
+	if n := fired.Load(); n != 0 {
+		t.Fatalf("the probe fired again (%d) after the count was reset", n)
+	}
 	return dir, fired
 }
 
@@ -63,14 +79,23 @@ func write(t *testing.T, path, content string) {
 	}
 }
 
-// settle waits out the quiet period plus margin, so a pending batch has fired.
-func settle() { time.Sleep(quiet * 4) }
+// awaitFired waits until fired reaches want, or a deadline passes, then one
+// more quiet window, so a notification too many would show up too. It returns
+// the count. A fixed wait instead would fail whenever a busy machine delivers
+// the events, or runs the debounce timer, later than the wait allowed. With
+// want 0 there is nothing to wait for, so it waits just the window.
+func awaitFired(fired *atomic.Int64, want int64) int64 {
+	for deadline := time.Now().Add(5 * time.Second); fired.Load() < want && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+	}
+	time.Sleep(quiet * 2)
+	return fired.Load()
+}
 
 func TestNotifiesOnMarkdownChange(t *testing.T) {
 	dir, fired := start(t)
 	write(t, filepath.Join(dir, "a.md"), "hello")
-	settle()
-	if got := fired.Load(); got != 1 {
+	if got := awaitFired(fired, 1); got != 1 {
 		t.Errorf("fired %d times, want 1", got)
 	}
 }
@@ -83,8 +108,7 @@ func TestABatchIsOneChange(t *testing.T) {
 		write(t, filepath.Join(dir, "f", string(rune('a'+i%20))+".md"), "x")
 		os.Chmod(filepath.Join(dir, "f", string(rune('a'+i%20))+".md"), 0o644)
 	}
-	settle()
-	if got := fired.Load(); got != 1 {
+	if got := awaitFired(fired, 1); got != 1 {
 		t.Errorf("a batch of 40 writes fired %d times, want 1", got)
 	}
 }
@@ -99,14 +123,12 @@ func TestIrrelevantWritesDoNotNotify(t *testing.T) {
 	write(t, filepath.Join(dir, ".hidden.md"), "hidden")
 	write(t, filepath.Join(dir, ".wiki-1234.tmp"), "an atomic write in progress")
 	write(t, filepath.Join(dir, ".git", "HEAD"), "ref: refs/heads/main")
-	settle()
-	if got := fired.Load(); got != 0 {
+	if got := awaitFired(fired, 0); got != 0 {
 		t.Errorf("fired %d times for writes that change nothing", got)
 	}
 	// …and the watcher is still alive for real changes.
 	write(t, filepath.Join(dir, "real.md"), "yes")
-	settle()
-	if got := fired.Load(); got != 1 {
+	if got := awaitFired(fired, 1); got != 1 {
 		t.Errorf("fired %d times after a real change, want 1", got)
 	}
 }
@@ -116,8 +138,7 @@ func TestIrrelevantWritesDoNotNotify(t *testing.T) {
 func TestConfigChangeNotifies(t *testing.T) {
 	dir, fired := start(t)
 	write(t, filepath.Join(dir, "wiki.toml"), "spec = \"0.1\"\n")
-	settle()
-	if got := fired.Load(); got != 1 {
+	if got := awaitFired(fired, 1); got != 1 {
 		t.Errorf("fired %d times for a wiki.toml change, want 1", got)
 	}
 }
@@ -130,12 +151,10 @@ func TestNewDirectoryIsWatched(t *testing.T) {
 	if err := os.Mkdir(sub, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	settle()
-	before := fired.Load()
+	before := awaitFired(fired, 0) // whatever the mkdir itself fires, it has fired by now
 
 	write(t, filepath.Join(sub, "inside.md"), "content")
-	settle()
-	if got := fired.Load(); got <= before {
+	if got := awaitFired(fired, before+1); got <= before {
 		t.Errorf("a write inside a newly created folder did not notify (fired %d, was %d)", got, before)
 	}
 }
@@ -174,14 +193,41 @@ func TestWatchesDoNotAccumulate(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	settle()
-
 	// The watcher is internal, so this asserts the observable consequence: it is
 	// still alive and still reporting, rather than having hit a watch limit.
-	before := fired.Load()
+	before := awaitFired(fired, 0)
 	write(t, filepath.Join(dir, "after.md"), "still working")
-	settle()
-	if fired.Load() <= before {
+	if awaitFired(fired, before+1) <= before {
 		t.Error("the watcher stopped reporting after directory churn")
+	}
+}
+
+// A folder that arrives already holding entries (moved in, checked out, or
+// filled faster than its watch is added) raises no event for those entries:
+// the watch on it starts after they exist. Its relevant files count as the
+// change, so they are never missed.
+func TestADirectoryMovedInNotifies(t *testing.T) {
+	dir, fired := start(t)
+	outside := t.TempDir()
+	write(t, filepath.Join(outside, "folder", "entry.md"), "already here")
+	if err := os.Rename(filepath.Join(outside, "folder"), filepath.Join(dir, "folder")); err != nil {
+		t.Fatal(err)
+	}
+	if got := awaitFired(fired, 1); got != 1 {
+		t.Errorf("a folder moved in with an entry fired %d times, want 1", got)
+	}
+}
+
+// A hidden folder that arrives (an editor's .trash, .obsidian, a .git) is not
+// the bundle's content, so its markdown doesn't count as a change.
+func TestAHiddenDirectoryMovedInDoesNotNotify(t *testing.T) {
+	dir, fired := start(t)
+	outside := t.TempDir()
+	write(t, filepath.Join(outside, ".trash", "x.md"), "deleted entry")
+	if err := os.Rename(filepath.Join(outside, ".trash"), filepath.Join(dir, ".trash")); err != nil {
+		t.Fatal(err)
+	}
+	if got := awaitFired(fired, 0); got != 0 {
+		t.Errorf("a hidden folder moved in fired %d times, want 0", got)
 	}
 }

@@ -34,7 +34,7 @@ func Watch(ctx context.Context, root string, quiet time.Duration, onChange func(
 	}
 	defer w.Close()
 
-	if err := addTree(w, root); err != nil {
+	if _, err := addTree(w, root); err != nil {
 		return err
 	}
 
@@ -55,13 +55,20 @@ func Watch(ctx context.Context, root string, quiet time.Duration, onChange func(
 			if !ok {
 				return nil
 			}
+			changed := relevant(event.Name)
 			// A new directory has to be watched explicitly; fsnotify is not
 			// recursive. Without this, anything created inside a folder added
-			// while running would be invisible.
-			if event.Has(fsnotify.Create) && isDir(event.Name) {
-				_ = addTree(w, event.Name)
+			// while running would be invisible. And what is already inside it
+			// (a folder moved in, checked out, or filled before its watch was
+			// added) raises no event of its own, so a relevant file found there
+			// is the change. A hidden directory (.git, an editor's .trash) is not
+			// the bundle's, so it is neither watched nor counted.
+			if event.Has(fsnotify.Create) && !hidden(event.Name) && isDir(event.Name) {
+				if found, _ := addTree(w, event.Name); found {
+					changed = true
+				}
 			}
-			if !relevant(event.Name) {
+			if !changed {
 				continue
 			}
 			if pending && !timer.Stop() {
@@ -90,26 +97,35 @@ func Watch(ctx context.Context, root string, quiet time.Duration, onChange func(
 // metadata file, and the atomic writes' own `.wiki-*.tmp` would otherwise each
 // cost a full rebuild and a version bump for a bundle that did not change.
 func relevant(path string) bool {
-	base := filepath.Base(path)
-	if strings.HasPrefix(base, ".") {
+	if hidden(path) {
 		return false
 	}
+	base := filepath.Base(path)
 	return strings.HasSuffix(base, ".md") || base == "wiki.toml"
 }
 
+// hidden reports whether a path's name starts with a dot: an editor's, a
+// tool's or git's own file or folder, never the bundle's content.
+func hidden(path string) bool { return strings.HasPrefix(filepath.Base(path), ".") }
+
 // addTree watches root and every directory under it, skipping hidden ones so
 // `.git` does not generate events for work that is not the bundle's content.
-func addTree(w *fsnotify.Watcher, root string) error {
-	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || !d.IsDir() {
+// found reports whether the tree already holds a relevant file.
+func addTree(w *fsnotify.Watcher, root string) (found bool, err error) {
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		switch {
+		case err != nil:
 			return nil // an unreadable subtree is not fatal; watch what we can
-		}
-		if path != root && strings.HasPrefix(d.Name(), ".") {
+		case !d.IsDir():
+			found = found || relevant(path)
+			return nil
+		case path != root && hidden(path):
 			return fs.SkipDir
 		}
 		_ = w.Add(path)
 		return nil
 	})
+	return found, err
 }
 
 // isDir asks the filesystem rather than guessing from the name: an extensionless

@@ -2,6 +2,12 @@
 
 All notable changes to `wikiview` are documented here. This project follows [semantic versioning](https://semver.org); while pre-1.0, breaking changes bump the minor version.
 
+## v0.14.0
+
+### Fixed
+
+- **A folder that arrives already holding entries updates the view.** A folder moved into the bundle, checked out by git, or filled with entries before wikiview started watching it raised no change, so the tree, boards and graphs stayed stale until the next edit. Its entries now count as the change.
+
 ## v0.9.0 - v0.13.0 — 2026-10-14
 
 ### New
