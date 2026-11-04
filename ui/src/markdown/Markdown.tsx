@@ -98,7 +98,9 @@ export function Markdown({
 
       // A file the bundle carries rather than an entry: a diagram, a contract,
       // a spreadsheet. A new tab, because leaving the reader to look at a PDF
-      // and then having to navigate back is worse than having both.
+      // and then having to navigate back is worse than having both. The address is
+      // used exactly as the server sent it: `/raw` needs no token, so nothing is
+      // appended, and the server's Host check is what guards it.
       if (link?.asset) {
         return (
           <a
@@ -147,7 +149,8 @@ export function Markdown({
 
     // An image in the bundle is fetched over HTTP like any other image. The
     // only thing needed here is the address, which arrives resolved in the same
-    // table as every other href; the browser does the rest.
+    // table as every other href; the browser does the rest. `/raw` needs no
+    // token, so nothing is appended to it.
     img({ src, alt, ...props }) {
       const asset = typeof src === "string" ? links.get(src)?.asset : undefined;
       return (

@@ -9,7 +9,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io/fs"
+	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -26,6 +28,28 @@ type Server struct {
 	ui     fs.FS
 	mux    *http.ServeMux
 	id     string
+	// token is this run's API token on a network bind: 32 random bytes as 64
+	// lowercase hex characters, created once at start. It is what the terminal
+	// prints in the fragment and what every /api call must carry in a header.
+	// Never logged. Empty on a loopback bind, which needs no token.
+	token string
+	// rawSecret is the value of the cookie that opens `/raw` on a network bind:
+	// a second secret, separate from the token, because a cookie reaches every
+	// service on this host (see rawCookie). Empty on loopback.
+	rawSecret string
+	// linkHost is the host the printed URL names: the spelling the listener was
+	// asked to bind, so the URL agrees with what the user typed, or this
+	// machine's name when the bind was to every interface (see linkHost).
+	linkHost string
+	// port is the port actually bound: it is what the printed URL names, and what
+	// a restart changes. The Host allowlist does not compare it — rebinding turns
+	// on the name, not the port — so `vite dev`, whose Host is the dev server's
+	// port, is still answered.
+	port int
+	// hosts are the host spellings a loopback server answers to: the loopback
+	// ones plus bindHost, which is how a bind to 127.0.0.53 can still answer its
+	// own URL. Unused on a network bind, which has no Host check.
+	hosts []string
 	// announcing keeps rebuilding and announcing together, so overlapping
 	// rebuilds are reported in order and each version exactly once.
 	announcing sync.Mutex
@@ -36,13 +60,25 @@ type Server struct {
 
 // New builds the server. ui is the built frontend, or nil to serve the API only
 // (the development shape, where Vite serves the app and proxies /api here).
-func New(s *store.Store, ui fs.FS) *Server {
+//
+// bindHost is the host the listener was asked to bind and port the port it got;
+// together they are what the terminal prints. A loopback bindHost gets the Host
+// check and no token; any other one gets a token and no Host check.
+func New(s *store.Store, ui fs.FS, bindHost string, port int) *Server {
 	srv := &Server{
-		store:  s,
-		events: newBroker(),
-		ui:     ui,
-		mux:    http.NewServeMux(),
-		id:     bundleID(s.View().Index.Bundle.Dir),
+		store:    s,
+		events:   newBroker(),
+		ui:       ui,
+		mux:      http.NewServeMux(),
+		id:       bundleID(s.View().Index.Bundle.Dir),
+		linkHost: linkHost(bindHost, os.Hostname, net.InterfaceAddrs),
+		port:     port,
+	}
+	if loopback(bindHost) {
+		srv.hosts = hostAllowlist(bindHost)
+	} else {
+		srv.token = newSecret()
+		srv.rawSecret = newSecret()
 	}
 	srv.mux.HandleFunc("GET /api/bundle", srv.handleBundle)
 	srv.mux.HandleFunc("GET /api/entry/{path...}", srv.handleEntry)
@@ -74,8 +110,6 @@ func New(s *store.Store, ui fs.FS) *Server {
 	srv.mux.HandleFunc("GET /", srv.serveUI)
 	return srv
 }
-
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
 
 // BundleInfo is what a client needs to know about the bundle itself, as opposed
 // to any entry in it.

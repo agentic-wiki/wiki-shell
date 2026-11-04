@@ -147,7 +147,7 @@ func TestFrontmatterRefsAreFoundByValue(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got EntryView
-	if code := get(t, New(s, nil), "/api/entry/a.md", &got); code != http.StatusOK {
+	if code := get(t, New(s, nil, "localhost", 0), "/api/entry/a.md", &got); code != http.StatusOK {
 		t.Fatalf("code=%d", code)
 	}
 

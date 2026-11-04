@@ -31,7 +31,7 @@ func send(t *testing.T, srv *Server, method, path string, body any) (int, uint64
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(method, path, bytes.NewReader(raw)))
+	srv.ServeHTTP(rec, browserRequest(srv, method, path, bytes.NewReader(raw)))
 	// Both an accepted write and a refused one carry a version, which is what
 	// lets a client resync from either in one step.
 	var out struct {
@@ -615,7 +615,7 @@ func TestDraftIsWhatADeclaredViewWouldStartAs(t *testing.T) {
 
 	// A graph assumes nothing, and says so as an empty list rather than null.
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/draft/graph/", nil))
+	srv.ServeHTTP(rec, browserRequest(srv, http.MethodGet, "/api/draft/graph/", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"where":[]`) {
 		t.Errorf("graph draft = %d %s", rec.Code, rec.Body)
 	}

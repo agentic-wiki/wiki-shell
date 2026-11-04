@@ -4,8 +4,9 @@ import { StrictMode, act } from "react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router";
 import { App } from "@/App";
 import { proposeMessage } from "@/shell/GitActions";
-import type { BundleInfo, Entry, GitStatus, Graph, TreeNode } from "@/api";
+import { streamTiming, type BundleInfo, type Entry, type GitStatus, type Graph, type TreeNode } from "@/api";
 import { forget } from "@/cache";
+import { clearToken, storeToken, takeTokenFromUrl, token } from "@/token";
 import { resize } from "./test-setup";
 
 /**
@@ -18,6 +19,10 @@ import { resize } from "./test-setup";
  * Not a browser — no browser is available here — but real execution: the module
  * graph runs, effects fire, and the router resolves against the URL.
  */
+
+/** A token shaped the way a network server creates one, for the fragment tests: only
+ *  this shape is believed from an address. */
+const FRAGMENT_TOKEN = "0123456789abcdef".repeat(4);
 
 const bundle: BundleInfo = {
   id: "abc123",
@@ -231,14 +236,33 @@ const tableEntry: Entry = {
   checkboxes: [],
 };
 
-let listeners: Record<string, (e: MessageEvent) => void> = {};
+/** The open change stream, so a test can deliver a version on it or end it the
+ *  way a server shutting down does. */
+let stream: ReadableStreamDefaultController<Uint8Array> | undefined;
+/** Every request for the change stream, with the token header it carried, so a
+ *  test can see that a reconnect used the same token. */
+let streamRequests: { token: string | null }[] = [];
+/** What the server answers with on the bundle, the tree and the change stream.
+ *  200 is a working server; `401` is a token it does not accept, `421` an
+ *  address it does not answer to, `503` a server that is down. Set by a test to
+ *  put the app in that state. */
+let serverStatus = 200;
 
 /** Delivers a version on the stream the app is subscribed to. */
 function emitVersion(v: number) {
-  listeners.version?.(new MessageEvent("version", { data: String(v) }));
+  stream?.enqueue(new TextEncoder().encode(`event: version\ndata: ${v}\n\n`));
+}
+
+/** Ends the open stream the way the server does when it shuts down. */
+function endStream() {
+  stream?.close();
+  stream = undefined;
 }
 
 let fetches = 0;
+/** Every API call the app made, and the token header it carried: the whole of
+ *  "the token goes out from one place" is this list. */
+let requests: { url: string; token: string | null }[] = [];
 /** Every draft the declaring form asked for, so a test can see it follow the
  *  folder. Compared as a set: StrictMode runs the effect twice, aborting the first. */
 let drafts: string[] = [];
@@ -274,11 +298,50 @@ const sectionsEntry: Entry = {
 function stubFetch() {
   fetches = 0;
   drafts = [];
+  requests = [];
+  streamRequests = [];
+  stream = undefined;
   const body = (v: unknown) =>
     Promise.resolve(new Response(JSON.stringify(v), { headers: { "content-type": "application/json" } }));
-  globalThis.fetch = ((input: RequestInfo | URL) => {
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     fetches++;
     const url = String(input);
+    const token = new Headers(init?.headers).get("X-Wikiview-Token");
+    // The stream is driven by a test, via emitVersion and endStream, rather than
+    // answered with a fixture. It is stubbed here rather than per test because
+    // mountAt owns the stubbing, and a test's own would be replaced by this one.
+    if (url.endsWith("/api/events")) {
+      streamRequests.push({ token });
+      if (serverStatus !== 200) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ error: "refused" }), {
+            status: serverStatus,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              stream = controller;
+            },
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        ),
+      );
+    }
+    requests.push({ url, token });
+    // A server that refuses the whole tab, for the two refusals that are the
+    // contract's turns to make.
+    if (serverStatus === 401 || serverStatus === 421) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ error: "refused" }), {
+          status: serverStatus,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
     if (url.endsWith("/api/bundle")) return body(bundle);
     if (url.endsWith("/api/tree")) return body(tree);
     // What a view over a folder starts as: the server's default filter, which
@@ -306,19 +369,6 @@ function stubFetch() {
       }),
     );
   }) as typeof fetch;
-  // A stream a test can drive, via emitVersion. Installed here rather than per
-  // test because mountAt owns the stubbing, and a test installing its own would
-  // be replaced by this one.
-  listeners = {};
-  globalThis.EventSource = class {
-    addEventListener(type: string, fn: (e: MessageEvent) => void) {
-      listeners[type] = fn;
-    }
-    removeEventListener(type: string) {
-      delete listeners[type];
-    }
-    close() {}
-  } as unknown as typeof EventSource;
 }
 
 let root: Root | undefined;
@@ -329,6 +379,18 @@ let container: HTMLElement | undefined;
 // previous test left it.
 beforeEach(() => {
   localStorage.clear();
+  // A server that answers, before any test puts it in another state.
+  serverStatus = 200;
+  // The stream's clocks, in case a test shortened them.
+  streamTiming.retryMs = 1000;
+  streamTiming.idleMs = 30_000;
+  // A tab holds one token, and the fragment is read from the address bar: both
+  // start clean, with a token this server accepts, so a test that is not about
+  // the token is not accidentally about the state for having none.
+  sessionStorage.clear();
+  clearToken();
+  storeToken("test-token");
+  window.history.replaceState(null, "", "/");
   // Entries read in one test are not entries this one has read, and a copy left
   // behind would answer a fetch that should have been made.
   forget();
@@ -385,6 +447,24 @@ async function mountAt(path: string): Promise<string> {
     await new Promise((r) => setTimeout(r, 0));
   });
   return container.textContent ?? "";
+}
+
+/** Lets promises and zero-delay timers settle inside act, which a reconnecting
+ *  stream needs before a test can look at what it did. */
+async function settle(ms = 0) {
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, ms));
+  });
+}
+
+/** Waits until `done()`, polling: a retry happens on a timer, so a fixed sleep
+ *  would be a guessed margin. Fails the test rather than hanging. */
+async function until(done: () => boolean, ms = 5000) {
+  const start = Date.now();
+  while (!done()) {
+    if (Date.now() - start > ms) throw new Error("timed out waiting for the app");
+    await settle(10);
+  }
 }
 
 test("a deep entry URL renders that entry, not a blank shell", async () => {
@@ -866,6 +946,8 @@ test("a file the bundle carries is fetched, not navigated to", async () => {
   const anchors = [...document.querySelectorAll(".markdown a")];
 
   const asset = anchors.find((a) => a.textContent === "contract");
+  // Used exactly as delivered: `/raw` is open behind the server's Host check,
+  // so nothing here appends the session token.
   expect(asset?.getAttribute("href")).toBe("/raw/notes/contract.sol");
   // A new tab, so looking at a PDF does not cost you the entry you were reading.
   expect(asset?.getAttribute("target")).toBe("_blank");
@@ -877,13 +959,28 @@ test("a file the bundle carries is fetched, not navigated to", async () => {
   expect(unwritten?.getAttribute("href")).toBe("/wiki/notes/gone.md");
 });
 
-// An image needs no mechanism of its own. Given the address, the browser fetches
-// it over HTTP like any other image.
-test("an image in an entry loads from where the server says it is", async () => {
+// An image needs no mechanism of its own. The address arrives with whatever the
+// server needs in it, and the browser fetches it over HTTP like any other image.
+test("an image in an entry loads from the address the server gave", async () => {
   await mountAt("/wiki/notes/a.md");
   const img = document.querySelector(".markdown img");
   expect(img?.getAttribute("src")).toBe("/raw/notes/diagram.png");
   expect(img?.getAttribute("alt")).toBe("a diagram");
+});
+
+// The token must not leak into anything the page emits: an asset address, a link
+// out of the bundle, or an address an entry itself wrote a `?t=` into. `/raw` is
+// open behind the server's Host check, so the client appends nothing.
+test("no address the app renders carries the token", async () => {
+  await mountAt("/wiki/notes/a.md");
+  const addresses = [...document.querySelectorAll("[href], [src]")].map(
+    (el) => el.getAttribute("href") ?? el.getAttribute("src") ?? "",
+  );
+  expect(addresses.length).toBeGreaterThan(0);
+  for (const address of addresses) {
+    expect(address).not.toContain("test-token");
+    expect(address).not.toMatch(/[?&]t=/);
+  }
 });
 
 // A relative href pointing above the bundle resolves against the *current
@@ -6016,4 +6113,212 @@ test("Escape clears the search, then leaves it, before it closes the sheet", asy
   await pressEscape();
   await act(async () => new Promise((r) => setTimeout(r, 0)));
   expect(sheetOpen()).toBe(false);
+});
+
+// --- The token, and the window that has none ---------------------------------
+
+// On localhost the server needs no token, so a tab without one asks with the
+// placeholder header and reads the wiki like any other.
+test("a tab without a token reads the wiki on localhost", async () => {
+  clearToken();
+  const text = await mountAt("/wiki/notes/a.md");
+
+  expect(text).toContain("A Note");
+  expect(text).not.toContain("Open this wiki with its link");
+  expect(new Set(requests.map((r) => r.token))).toEqual(new Set(["local"]));
+});
+
+// On a network address the server refuses a tab without its token. A wiki can
+// hold client notes, so that tab is given nothing: no bundle, no entry.
+test("a tab the server refuses shows the link state and nothing from the bundle", async () => {
+  clearToken();
+  serverStatus = 401;
+  const text = await mountAt("/wiki/notes/a.md");
+
+  // A remote reader cannot see the terminal, so the copy says who to ask.
+  expect(text).toContain("Ask the person who started wikiview for that link.");
+  expect(text).toContain("Open this wiki with its link");
+  // The address it is on, as plain text: never the token and never a fragment.
+  expect(text).toContain("This tab is on");
+  expect(text).toContain(window.location.origin);
+  expect(text).not.toContain("#t=");
+  // Nothing from the bundle is in the document, which is the point of the state.
+  expect(text).not.toContain("My kb");
+  expect(text).not.toContain("A Note");
+  expect(text).not.toContain("The body of the entry.");
+});
+
+// The address bar is the one place the token arrives, and it must not stay
+// there: a screenshot or a bookmark of it is the leak the fragment design is for.
+// Taken before React starts, which is what main.tsx does, so the router is built
+// on an address that no longer has it.
+test("the fragment's token is used on the first call and taken out of the address", async () => {
+  clearToken();
+  window.history.replaceState(null, "", "/#t=" + FRAGMENT_TOKEN);
+
+  expect(takeTokenFromUrl()).toBe(true);
+  expect(window.location.hash).toBe("");
+
+  await mountAt("/");
+
+  expect(requests.length).toBeGreaterThan(0);
+  expect(new Set(requests.map((r) => r.token))).toEqual(new Set([FRAGMENT_TOKEN]));
+  // Kept for this tab, so reloading the now-clean address still works.
+  expect(token()).toBe(FRAGMENT_TOKEN);
+});
+
+// The printed link pasted into a tab that is already open is a fragment-only
+// navigation: no reload, so the app itself has to read it — and taking it out of
+// the address is the whole point.
+test("a fragment that arrives after mount recovers the link state", async () => {
+  clearToken();
+  serverStatus = 401;
+  const text = await mountAt("/wiki/notes/a.md");
+  expect(text).toContain("Open this wiki with its link");
+
+  serverStatus = 200;
+  await act(async () => {
+    window.location.hash = "#t=" + FRAGMENT_TOKEN;
+  });
+  await until(() => (container?.textContent ?? "").includes("A Note"));
+
+  expect(token()).toBe(FRAGMENT_TOKEN);
+  expect(window.location.hash).toBe("");
+});
+
+// The same recovery from the other dead end: the server gave up on the stream,
+// and the printed link is pasted in rather than the page reloaded.
+test("a fragment that arrives after mount recovers the unreachable state", async () => {
+  streamTiming.retryMs = 1;
+  serverStatus = 503;
+  const text = await mountAt("/wiki/notes/a.md");
+  expect(text).toContain("A Note");
+  await until(() => (container?.textContent ?? "").includes("Cannot reach the bundle"));
+
+  serverStatus = 200;
+  await act(async () => {
+    window.location.hash = "#t=" + FRAGMENT_TOKEN;
+  });
+  await until(() => (container?.textContent ?? "").includes("A Note"));
+  expect(token()).toBe(FRAGMENT_TOKEN);
+});
+
+// A stale token in storage must not beat the link just pasted in: that is how a
+// tab left open across a restart recovers.
+test("a fragment wins over a token this tab already held", async () => {
+  storeToken("0".repeat(64));
+  window.history.replaceState(null, "", "/#t=" + FRAGMENT_TOKEN);
+  takeTokenFromUrl();
+
+  await mountAt("/");
+
+  expect(new Set(requests.map((r) => r.token))).toEqual(new Set([FRAGMENT_TOKEN]));
+  expect(token()).toBe(FRAGMENT_TOKEN);
+});
+
+// Only a token-shaped fragment is believed: a link whose anchor happens to be
+// `#t=…` must not replace the token the tab is working with.
+test("a fragment that is not token-shaped is left alone", async () => {
+  storeToken("a-working-token");
+  window.history.replaceState(null, "", "/wiki/notes/a.md#t=abc");
+
+  expect(takeTokenFromUrl()).toBe(false);
+  expect(token()).toBe("a-working-token");
+});
+
+// A restart closes every open stream. Reconnecting is the right move, and the
+// token this tab already holds is what the next attempt carries.
+test("a stream that ends reconnects with the same token", async () => {
+  await mountAt("/wiki/notes/a.md");
+  await settle();
+  const opened = streamRequests.length;
+  expect(opened).toBeGreaterThan(0);
+
+  // The greeting, so a later version is a change rather than the greeting.
+  await act(async () => emitVersion(1));
+  await settle();
+
+  await act(async () => endStream());
+  // The stream backs off before reconnecting, so a restart is not a hot loop.
+  await until(() => streamRequests.length === opened + 1);
+
+  expect(streamRequests.length).toBe(opened + 1);
+  expect(streamRequests[opened]?.token).toBe("test-token");
+  // The new stream is live: a version on it still refetches.
+  const before = fetchCount();
+  await act(async () => emitVersion(2));
+  await settle();
+  expect(fetchCount()).toBeGreaterThan(before);
+});
+
+// A restart creates a new token, so the reconnect is refused. That is not an error
+// to retry: the way on is the link wikiview printed when it started, and the refused token
+// is dropped rather than kept for the next attempt.
+test("a reconnect refused as unauthenticated shows the link state", async () => {
+  const text = await mountAt("/wiki/notes/a.md");
+  expect(text).toContain("A Note");
+  await settle();
+
+  serverStatus = 401;
+  await act(async () => endStream());
+  await until(() => (container?.textContent ?? "").includes("Open this wiki with its link"));
+
+  const after = container!.textContent ?? "";
+  expect(after).toContain("Open this wiki with its link");
+  // No bundle content left behind by the reader that was on screen.
+  expect(after).not.toContain("A Note");
+  // The refused token is dropped, so opening the newly printed link recovers.
+  expect(token()).toBeNull();
+  expect(document.title).toBe("Open this wiki with its link · wikiview");
+});
+
+// A 421 is the address, not the token: the server does not answer to the name in
+// the address bar, because it is not a loopback name.
+// The token was never the problem, so it is kept, and the screen says which
+// address to use.
+test("a 421 says to use the printed address and keeps the token", async () => {
+  // The address in the bar is not one this server answers to, so even the
+  // bundle read is refused with 421.
+  serverStatus = 421;
+  const text = await mountAt("/wiki/notes/a.md");
+
+  expect(text).toContain("Open this wiki with its link");
+  expect(text).toContain("wikiview opens this wiki only at the address it printed when it started");
+  expect(token()).toBe("test-token");
+});
+
+// The retry budget is the card's promise: a stream that cannot be reached ends
+// on a screen with a way forward, not on a quiet loop and not on the link state
+// — there is nothing in a terminal to open for a server that is down.
+test("an exhausted retry budget shows the danger state, not the link screen", async () => {
+  streamTiming.retryMs = 1;
+  serverStatus = 503;
+  await mountAt("/wiki/notes/a.md");
+  await until(() => (container?.textContent ?? "").includes("Cannot reach the bundle"));
+
+  const text = container!.textContent ?? "";
+  expect(text).toContain("The connection to wikiview was lost.");
+  expect(text).not.toContain("Open this wiki with its link");
+  // A server that is down is not a token problem, so the token is still held.
+  expect(token()).toBe("test-token");
+});
+
+// Once the stream has given up, nothing restarts it but this button: Retry has to
+// bring both the data and the stream back, or the reader is on screen but deaf to
+// every later change.
+test("Retry starts the stream again", async () => {
+  streamTiming.retryMs = 1;
+  serverStatus = 503;
+  await mountAt("/wiki/notes/a.md");
+  await until(() => (container?.textContent ?? "").includes("Cannot reach the bundle"));
+  const before = streamRequests.length;
+
+  serverStatus = 200;
+  const retry = [...document.querySelectorAll("button")].find((b) => b.textContent === "Retry");
+  expect(retry).toBeDefined();
+  await act(async () => retry!.click());
+  await until(() => streamRequests.length > before);
+  await until(() => (container?.textContent ?? "").includes("A Note"));
+
+  expect(container!.textContent).not.toContain("Cannot reach the bundle");
 });

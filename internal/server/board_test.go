@@ -43,7 +43,7 @@ func newBoardServer(t *testing.T, toml string) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(s, nil)
+	return New(s, nil, "localhost", 0)
 }
 
 const declaredBoard = `spec = "0.1"
@@ -169,7 +169,7 @@ func TestAnIDNobodyDeclaredIsNotFound(t *testing.T) {
 	// "backlog" — but the *path* is not an address.
 	for _, path := range []string{"/api/board/3-reader", "/api/board/nonsense"} {
 		rec := httptest.NewRecorder()
-		srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		srv.ServeHTTP(rec, browserRequest(srv, http.MethodGet, path, nil))
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("GET %s = %d, want 404", path, rec.Code)
 		}
@@ -265,7 +265,7 @@ path  = "/backlog"
 where = ["type=task", "kind=nothing-matches-this"]
 `)
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/board/none", nil))
+	srv.ServeHTTP(rec, browserRequest(srv, http.MethodGet, "/api/board/none", nil))
 	if !strings.Contains(rec.Body.String(), `"columns":[]`) {
 		t.Errorf("body = %s", rec.Body)
 	}
@@ -321,7 +321,7 @@ func TestBoardOffersNoValuesForFreeText(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, f := range board(t, New(s, nil), "/api/board/root").Fields {
+	for _, f := range board(t, New(s, nil, "localhost", 0), "/api/board/root").Fields {
 		switch f.Key {
 		case "title":
 			if f.Values != nil {

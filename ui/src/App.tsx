@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
-import { api, onVersion, type BundleInfo, type TreeNode } from "@/api";
+import { api, onTrouble, onVersion, type BundleInfo, type Trouble, type TreeNode } from "@/api";
+import { takeTokenFromUrl } from "@/token";
+import { NeedsLink } from "@/views/NeedsLink";
 import { useSeen } from "@/seen";
 import { useQueue, type Queue } from "@/queue";
 import { Shell } from "@/shell/Shell";
@@ -19,10 +21,43 @@ import { frontDoor } from "@/tree";
 import { BundleProvider } from "@/bundle";
 import { ToastProvider, useToast } from "@/ui/Toast";
 
+/** What the error state says when the change stream gave up, as opposed to a
+ *  load that failed. */
+const CONNECTION_LOST = "The connection to wikiview was lost.";
+
 export function App() {
+  // What stopped this tab reading the bundle, or null when nothing did. Every
+  // tab asks first, with or without a token: on localhost none is needed, and on
+  // a network address the server's `401` is what says one is. The fragment was
+  // already taken out of the address by `main.tsx`, before React started, so the
+  // router never holds it.
+  const [trouble, setTrouble] = useState<Trouble | null>(null);
+
+  // A token arriving as a fragment-only navigation — the printed link pasted into
+  // a tab that is already open — does not reload the page, so nothing but this
+  // listener would read it, and the token would sit in the address bar. Taking it
+  // is also how a tab on either problem screen recovers.
+  useEffect(() => {
+    const onFragment = () => {
+      if (!takeTokenFromUrl()) return;
+      setTrouble(null);
+      setError(null);
+      // The bundle was refused last time, and the stream may have given up: both
+      // start again with the token that is now in hand.
+      setRefresh((n) => n + 1);
+      setStreamAttempt((n) => n + 1);
+    };
+    window.addEventListener("hashchange", onFragment);
+    return () => window.removeEventListener("hashchange", onFragment);
+  }, []);
+
   const [bundle, setBundle] = useState<BundleInfo | null>(null);
   const [tree, setTree] = useState<TreeNode | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Bumped by Retry to start the change stream again: once it has given up it
+  // does not restart itself, and the effect below is the only thing that starts
+  // it.
+  const [streamAttempt, setStreamAttempt] = useState(0);
   // A refetch trigger, not the bundle's version. The SSE stream reports that
   // content changed; views depend on this so a change refetches what is on
   // screen without anything tracking which entry that is.
@@ -33,7 +68,21 @@ export function App() {
   // and every write would be refused as stale.
   const [refresh, setRefresh] = useState(0);
 
+  // A refused token or a refused address is not an error to retry: the way on is
+  // the link the server printed, so the reader is replaced by the state that says
+  // so. A bundle that became unreachable is different — it goes to the error
+  // state, which offers Retry.
+  useEffect(
+    () =>
+      onTrouble((reason) => {
+        if (reason === "unreachable") setError(CONNECTION_LOST);
+        else setTrouble(reason);
+      }),
+    [],
+  );
+
   useEffect(() => {
+    if (trouble) return;
     const ac = new AbortController();
     Promise.all([api.bundle(ac.signal), api.tree(ac.signal)])
       .then(([b, t]) => {
@@ -45,7 +94,7 @@ export function App() {
         if (!ac.signal.aborted) setError(String(e.message ?? e));
       });
     return () => ac.abort();
-  }, [refresh]);
+  }, [refresh, trouble]);
 
   // The last version acted on. A ref rather than state: it is read inside a
   // subscription that must not be torn down and rebuilt when it changes.
@@ -56,24 +105,28 @@ export function App() {
   //
   // Only a version we have not already seen counts. The stream greets every
   // connection with the current version — deliberately, so a client connecting
-  // after a change learns it is stale — and EventSource reconnects on its own,
-  // so acting on every message meant a full refetch on connect and again on each
-  // reconnect. That is visible: the page renders, then replaces itself a moment
-  // later for no reason.
-  useEffect(
-    () =>
-      onVersion((v) => {
-        // The first greeting says what the initial load is already fetching.
-        if (seen.current === null) {
-          seen.current = v;
-          return;
-        }
-        if (v === seen.current) return; // a reconnect repeating itself
+  // after a change learns it is stale — and it reconnects after a server
+  // restart, so acting on every message meant a full refetch on connect and
+  // again on each reconnect. That is visible: the page renders, then replaces
+  // itself a moment later for no reason.
+  useEffect(() => {
+    if (trouble) return;
+    return onVersion((v) => {
+      // The first greeting says what the initial load is already fetching.
+      if (seen.current === null) {
         seen.current = v;
-        setRefresh((n) => n + 1);
-      }),
-    [],
-  );
+        return;
+      }
+      if (v === seen.current) return; // a reconnect repeating itself
+      seen.current = v;
+      setRefresh((n) => n + 1);
+    });
+  }, [trouble, streamAttempt]);
+
+  // Before anything else: a tab without a usable token is not allowed to see, or
+  // ask for, the bundle at all. This is the whole screen, so no entry, tree or
+  // command from it can be in the DOM.
+  if (trouble) return <NeedsLink reason={trouble === "host-refused" ? "host" : "token"} />;
 
   if (error) {
     return (
@@ -85,7 +138,16 @@ export function App() {
         // The server may be starting, or restarting after a rebuild: trying
         // again is the one thing worth offering, and it is the same load.
         action={
-          <button type="button" onClick={() => setRefresh((n) => n + 1)} className={stateButton}>
+          <button
+            type="button"
+            onClick={() => {
+              setError(null);
+              setRefresh((n) => n + 1);
+              // The stream stopped on its own; this is what starts it again.
+              setStreamAttempt((n) => n + 1);
+            }}
+            className={stateButton}
+          >
             Retry
           </button>
         }

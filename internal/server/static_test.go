@@ -32,7 +32,7 @@ func TestIndexIsNeverCached(t *testing.T) {
 	// redirects it to `/` before any of this runs.)
 	for _, path := range []string{"/", "/kanban/backlog/backlog/index.md"} {
 		rec := httptest.NewRecorder()
-		srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		srv.ServeHTTP(rec, browserRequest(srv, http.MethodGet, path, nil))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("GET %s = %d", path, rec.Code)
 		}
@@ -49,7 +49,7 @@ func TestHashedAssetsAreCachedHard(t *testing.T) {
 	srv := withUI(t)
 
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/assets/index-abc123.js", nil))
+	srv.ServeHTTP(rec, browserRequest(srv, http.MethodGet, "/assets/index-abc123.js", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET asset = %d", rec.Code)
 	}
@@ -65,7 +65,7 @@ func TestNoUIBuiltSaysSo(t *testing.T) {
 	srv.ui = nil
 
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	srv.ServeHTTP(rec, browserRequest(srv, http.MethodGet, "/", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("GET / = %d, want 404", rec.Code)
 	}

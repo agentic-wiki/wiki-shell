@@ -20,8 +20,25 @@ func liveServer(t *testing.T) (*Server, *http.Client, string) {
 	srv := newTestServer(t)
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
-	return srv, ts.Client(), ts.URL
+	return srv, tokenClient(srv, ts.Client()), ts.URL
 }
+
+// tokenClient is a client whose every request carries the app's header, the way
+// the app's do: the stream is a protected path like any other.
+func tokenClient(srv *Server, client *http.Client) *http.Client {
+	transport := client.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	return &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		r.Header.Set(tokenHeader, clientHeader(srv))
+		return transport.RoundTrip(r)
+	})}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 // readEvent reads one `data:` line, so the test blocks on the stream rather than
 // on a sleep.
@@ -132,7 +149,7 @@ func TestShutdownDoesNotWaitForOpenStreams(t *testing.T) {
 	ts := httptest.NewServer(srv)
 	defer ts.Close()
 
-	resp, err := ts.Client().Get(ts.URL + "/api/events")
+	resp, err := tokenClient(srv, ts.Client()).Get(ts.URL + "/api/events")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +184,7 @@ func TestStreamsDoNotAccumulate(t *testing.T) {
 	before := runtime.NumGoroutine()
 
 	for range 50 {
-		resp, err := ts.Client().Get(ts.URL + "/api/events")
+		resp, err := tokenClient(srv, ts.Client()).Get(ts.URL + "/api/events")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -247,4 +264,44 @@ func TestDescribeNamesEveryReason(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A quiet stream keeps speaking, so the client can tell an idle connection from a
+// dead one: it tears the stream down after twice the heartbeat, which without
+// this would disconnect a healthy reader every half minute.
+func TestAQuietStreamKeepsSendingHeartbeats(t *testing.T) {
+	srv := newTestServer(t)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	previous := heartbeat
+	heartbeat = 5 * time.Millisecond
+	t.Cleanup(func() { heartbeat = previous })
+
+	resp, err := tokenClient(srv, ts.Client()).Get(ts.URL + "/api/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	r := bufio.NewReader(resp.Body)
+	readEvent(t, r) // the opening version, so the stream is established
+
+	// The next thing on the stream is the heartbeat, not an event: `: ping`,
+	// because nothing is published in between. The blank line closing the opening
+	// event comes first.
+	for range 100 {
+		line, err := r.ReadString('\n')
+		if err != nil {
+			t.Fatalf("reading the stream: %v", err)
+		}
+		switch strings.TrimSpace(line) {
+		case "":
+			continue
+		case ": ping":
+			return
+		default:
+			t.Fatalf("line=%q, want a heartbeat comment", line)
+		}
+	}
+	t.Fatal("no heartbeat arrived")
 }

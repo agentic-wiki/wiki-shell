@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -37,13 +38,24 @@ func newTestServer(t *testing.T) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(s, nil)
+	return New(s, nil, "localhost", 0)
+}
+
+// browserRequest builds what a browser at the printed address sends: the
+// loopback Host, and the header the app sends. Tests about boards, trees
+// and files should not be testing the fence by accident; the fence has its own
+// tests, which build their requests by hand.
+func browserRequest(srv *Server, method, target string, body io.Reader) *http.Request {
+	r := httptest.NewRequest(method, target, body)
+	r.Host = "127.0.0.1:0"
+	r.Header.Set(tokenHeader, clientHeader(srv))
+	return r
 }
 
 func get(t *testing.T, srv *Server, path string, into any) int {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	srv.ServeHTTP(rec, browserRequest(srv, http.MethodGet, path, nil))
 	if into != nil && rec.Code == http.StatusOK {
 		if err := json.Unmarshal(rec.Body.Bytes(), into); err != nil {
 			t.Fatalf("GET %s: %v (body %q)", path, err, rec.Body)
@@ -131,7 +143,7 @@ func TestPathIsOnlyEverAMapKey(t *testing.T) {
 		"/api/entry/notes/a", // no extension
 	} {
 		rec := httptest.NewRecorder()
-		srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, p, nil))
+		srv.ServeHTTP(rec, browserRequest(srv, http.MethodGet, p, nil))
 		if rec.Code == http.StatusOK {
 			t.Errorf("GET %s returned 200: %s", p, rec.Body)
 		}
@@ -186,7 +198,7 @@ func bundleServerIn(t *testing.T, files map[string]string) (*Server, func(name, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(s, nil), write, dir
+	return New(s, nil, "localhost", 0), write, dir
 }
 
 // Tag colour is a tag's position in this list, so the order is the contract:
@@ -212,7 +224,7 @@ func TestBundleTagsInFirstAppearanceOrder(t *testing.T) {
 	// decision rather than a surprise.
 	write("0.md", "---\ntags: [new]\n---\n")
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/refresh", strings.NewReader("{}")))
+	srv.ServeHTTP(rec, browserRequest(srv, http.MethodPost, "/api/refresh", strings.NewReader("{}")))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("refresh: %d %s", rec.Code, rec.Body)
 	}
@@ -228,7 +240,7 @@ func TestBundleTagsAreAListWhenThereAreNone(t *testing.T) {
 		"index.md":  "---\nokf_version: \"0.1\"\n---\nhome\n",
 	})
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/bundle", nil))
+	srv.ServeHTTP(rec, browserRequest(srv, http.MethodGet, "/api/bundle", nil))
 	if !strings.Contains(rec.Body.String(), `"tags":[]`) {
 		t.Errorf("body %s: want an empty tags list", rec.Body)
 	}
@@ -344,4 +356,13 @@ func TestTreeCountsEachEntrysConnections(t *testing.T) {
 			t.Errorf("%s links=%d, want %d", p, got[p], w)
 		}
 	}
+}
+
+// clientHeader is the X-Wikiview-Token value the app sends: this run's token on
+// a network bind, and `local` on loopback, where any value is accepted.
+func clientHeader(srv *Server) string {
+	if srv.networked() {
+		return srv.token
+	}
+	return "local"
 }

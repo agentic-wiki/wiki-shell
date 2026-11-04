@@ -2,6 +2,12 @@
 
 All notable changes to `wikiview` are documented here. This project follows [semantic versioning](https://semver.org); while pre-1.0, breaking changes bump the minor version.
 
+## v0.15.0
+
+### Changed
+
+- **A web page can no longer write to your wiki through localhost.** Every `/api` call must now carry an `X-Wikiview-Token` header, or it is refused with `401`. On localhost any value works, and the app sends one for you, so nothing changes for you. A page on another site cannot add the header. A `Host` that is not a loopback name gets `421`, which stops DNS rebinding. On a network address (`--host 0.0.0.0`), wikiview creates a token at start and prints it in the link (`#t=…`), and only that token opens the API. There is no TLS, so use a network address only on a network you trust. Images and PDFs under `/raw` still load without a header. On localhost `/raw` is unchanged. On a network address it needs a cookie that the app's first API call sets, so nobody without the token can fetch files either. Every response refuses framing and sends no referrer, and `/api` answers are never cached. The event stream sends a heartbeat every 15 seconds.
+
 ## v0.14.0
 
 ### Fixed

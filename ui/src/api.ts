@@ -1,6 +1,8 @@
 // The server's shape, mirrored. Every field here has a counterpart in
 // internal/server; if one drifts the other should be changed with it.
 
+import { clearToken, token } from "@/token";
+
 export interface BundleInfo {
   /** Scopes anything this browser remembers, so preferences never leak between
    *  bundles. Computed by the server: identity has one definition. */
@@ -348,8 +350,88 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The header every API call carries.
+ *
+ * The server requires it on every `/api` request, so the name is a contract
+ * with the other half: renaming it is a change on both sides, not a local one.
+ */
+const TOKEN_HEADER = "X-Wikiview-Token";
+
+/**
+ * What the header carries when this tab holds no token. On localhost the
+ * server accepts any value: the header's presence is the protection, because a
+ * page on another site cannot add it. On a network address the server answers
+ * `401`, and the tab shows how to get the link.
+ */
+const NO_TOKEN = "local";
+
+/**
+ * What stopped this tab reading or writing the bundle, named after what happened
+ * rather than after a status code, because the screens are chosen by these names.
+ *
+ * - `token-refused`: the API answered `401`, so this tab holds no token that this
+ *   server accepts. Only a server on a network address asks for one; a restart
+ *   creates a new one, which is the common case.
+ * - `host-refused`: the API answered `421`, so the name in the address bar is not
+ *   a loopback name (the machine's network name, or a DNS-rebinding page). The
+ *   token was never the problem, so it is kept.
+ * - `unreachable`: nothing is answering, or the change stream could not be
+ *   reconnected within its retry budget.
+ */
+export type Trouble = "token-refused" | "host-refused" | "unreachable";
+
+/** Everyone waiting to hear what stopped this tab. */
+const trouble = new Set<(reason: Trouble) => void>();
+
+/**
+ * Told when this tab can no longer read or write the bundle, and why (`Trouble`).
+ * What to show for each is the app's business; this only reports what happened.
+ *
+ * Returns a function that stops listening.
+ */
+export function onTrouble(handler: (reason: Trouble) => void): () => void {
+  trouble.add(handler);
+  return () => {
+    trouble.delete(handler);
+  };
+}
+
+/** Reports what stopped this tab, once, to everything listening. */
+function reportTrouble(reason: Trouble) {
+  for (const handler of trouble) handler(reason);
+}
+
+/**
+ * The one way out to the server: every request carries the header, with this
+ * tab's token or `NO_TOKEN`, and nothing the server answers is cached.
+ *
+ * One place rather than a header set at each call site, so the next endpoint
+ * added cannot be the one that forgets it.
+ */
+async function request(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  const held = token();
+  headers.set(TOKEN_HEADER, held ?? NO_TOKEN);
+  // `no-store` everywhere, not only on the stream: what these endpoints serve is
+  // a private wiki, and a cached answer is one the tab can be shown after the
+  // server stopped agreeing to it.
+  const res = await fetch(path, { cache: "no-store", ...init, headers });
+  if (res.status === 401) {
+    // A refusal is about the token this request sent. If the tab took a new one
+    // from a pasted link while it was in flight, the refusal is old news: the
+    // new token has not been tried, so it is kept and nothing is reported.
+    if (token() !== held) return res;
+    clearToken();
+    reportTrouble("token-refused");
+  } else if (res.status === 421) {
+    reportTrouble("host-refused");
+  }
+  return res;
+}
+
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(path, { signal });
+  const res = await request(path, { signal });
   if (!res.ok) {
     // The server answers errors as JSON; fall back to the status when whatever
     // replied was not the server.
@@ -363,7 +445,7 @@ const put = <T,>(path: string, body: unknown) => write<T>("PUT", path, body);
 const post = <T,>(path: string, body: unknown) => write<T>("POST", path, body);
 
 async function write<T>(method: string, path: string, body: unknown): Promise<T> {
-  const res = await fetch(path, {
+  const res = await request(path, {
     method,
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -455,24 +537,193 @@ export const api = {
   refresh: () => post<{ version: number }>("/api/refresh", {}),
 };
 
+/** How many reconnects in a row before giving up rather than retrying forever. */
+const RECONNECT_LIMIT = 4;
+
+/**
+ * The stream's two clocks, in one place.
+ *
+ * `retryMs` is the first wait before reconnecting, doubled on each failure, and
+ * `idleMs` is how long a connection may deliver nothing before it is treated as
+ * dead. They are here rather than inline so a test can run the retry budget out
+ * in milliseconds instead of a quarter of a minute; nothing else changes them.
+ * `idleMs` is twice the server's 15-second heartbeat: one lost heartbeat is
+ * tolerated, and a connection silent for two is presumed gone.
+ */
+export const streamTiming = { retryMs: 1000, idleMs: 30_000 };
+
 /**
  * Subscribes to change notifications.
  *
  * The stream carries a version and never a payload, so this reports staleness
  * rather than delivering content: a client that missed ten events refetches once
  * and is correct again. Returns an unsubscribe function.
+ *
+ * A streaming `fetch` reader rather than `EventSource`, because the server wants
+ * the token header on this route like on every other one and `EventSource`
+ * cannot set headers. What that costs is the reconnect `EventSource` did for
+ * free, so this does its own:
+ *
+ * - a connection that ends, fails or goes silent is reopened, with a wait that
+ *   starts at `streamTiming.retryMs` and doubles;
+ * - the budget is only refilled once a connection *delivers something* (a
+ *   heartbeat counts), not when it merely opens, so a server that accepts and
+ *   immediately closes cannot keep the loop alive;
+ * - a connection that delivers nothing for `streamTiming.idleMs` is aborted and
+ *   retried, because a socket can die without closing — a laptop lid, a changed
+ *   Wi-Fi — and an open read would otherwise wait forever;
+ * - after `RECONNECT_LIMIT` failures in a row it gives up and reports the bundle
+ *   `unreachable`, instead of retrying quietly forever.
+ *
+ * `401` and `421` are the exception: they are answers, not failures, and there
+ * is nothing to retry — `request` has already reported them and the app replaces
+ * the screen. Only a network failure, a `5xx`, or a stream that ended is worth
+ * another attempt.
  */
 export function onVersion(handler: (version: number) => void): () => void {
-  const source = new EventSource("/api/events");
-  const listener = (e: MessageEvent) => {
-    const v = Number(e.data);
-    if (Number.isFinite(v)) handler(v);
+  const abort = new AbortController();
+  let failures = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  // The connection in hand, so unsubscribing (or an idle timeout) can end it
+  // without touching a connection that has not started yet.
+  let attempt: AbortController | undefined;
+  let idle: ReturnType<typeof setTimeout> | undefined;
+
+  const run = async (): Promise<void> => {
+    attempt = new AbortController();
+    const connection = attempt;
+    const onAbort = () => connection.abort();
+    abort.signal.addEventListener("abort", onAbort);
+    try {
+      const res = await request("/api/events", {
+        signal: connection.signal,
+        headers: { accept: "text/event-stream" },
+      });
+      // Already reported by `request`: the token or the address is wrong, and
+      // another connection would get the same answer. The one exception is a
+      // late 401 for a token the tab has since replaced, which is not reported;
+      // stopping is still right, because adopting a token restarts the stream
+      // (App's hashchange handler bumps `streamAttempt`).
+      if (res.status === 401 || res.status === 421) return;
+      if (!res.ok || !res.body) throw new ApiError(res.status, res.statusText);
+      // An open connection owes us a heartbeat within the window, so the clock
+      // starts here and is reset by every delivery.
+      const touch = () => {
+        clearTimeout(idle);
+        idle = setTimeout(() => connection.abort(), streamTiming.idleMs);
+      };
+      touch();
+      for await (const version of versions(res.body, connection.signal, () => {
+        // Delivering is what makes a connection real, so this is where the
+        // retry budget is refilled — and where the idle clock is reset.
+        failures = 0;
+        touch();
+      })) {
+        if (abort.signal.aborted) return;
+        handler(version);
+      }
+      // The body ended. The server closes a stream when it shuts down, so
+      // connecting again is the right move; the token alone says whether that
+      // works, and a restart is what makes it not.
+    } catch {
+      // A failure, an idle abort, or our own unsubscribe: the check below tells
+      // the first two from the last.
+    } finally {
+      clearTimeout(idle);
+      abort.signal.removeEventListener("abort", onAbort);
+    }
+    if (abort.signal.aborted) return;
+    failures++;
+    if (failures > RECONNECT_LIMIT) {
+      reportTrouble("unreachable");
+      return;
+    }
+    timer = setTimeout(run, streamTiming.retryMs * 2 ** (failures - 1));
   };
-  source.addEventListener("version", listener);
+
+  void run();
   return () => {
-    source.removeEventListener("version", listener);
-    source.close();
+    abort.abort();
+    attempt?.abort();
+    clearTimeout(idle);
+    clearTimeout(timer);
   };
+}
+
+/**
+ * The versions in an event body, one event at a time.
+ *
+ * Deliberately minimal: the server sends `event: version` and `data: <n>`, a
+ * blank line between events, and both ends of that format are this app's.
+ * Parsing all of server-sent events here would be a second interpretation of
+ * something the app already owns. `\r\n\r\n` is accepted as well, because a
+ * proxy is allowed to rewrite line endings and the server does not control one.
+ *
+ * `delivered` is called whenever bytes arrive, including a heartbeat, which is
+ * what tells the caller the connection is real.
+ */
+async function* versions(
+  body: ReadableStream<Uint8Array>,
+  signal: AbortSignal,
+  delivered: () => void,
+): AsyncGenerator<number> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  // Aborting the request is not enough on its own to settle a pending read on
+  // every runtime, and a read that never settles would never report the idle
+  // connection this abort is for. Cancelling the body settles it.
+  const cancel = () => {
+    void reader.cancel().catch(() => {});
+  };
+  signal.addEventListener("abort", cancel);
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) return;
+      delivered();
+      pending += decoder.decode(value, { stream: true });
+      for (let event = cutEvent(pending); event; event = cutEvent(pending)) {
+        pending = event.rest;
+        const version = versionIn(event.block);
+        if (version !== null) yield version;
+      }
+    }
+  } finally {
+    signal.removeEventListener("abort", cancel);
+    // Unsubscribing while a read is pending leaves it unresolved otherwise.
+    cancel();
+  }
+}
+
+/**
+ * Splits the first complete event off `pending`, and returns what is left.
+ *
+ * Both blank-line endings are accepted; taking the earliest of the two keeps a
+ * `\r\n` stream from being read as one long event.
+ */
+function cutEvent(pending: string): { block: string; rest: string } | null {
+  const lf = pending.indexOf("\n\n");
+  const crlf = pending.indexOf("\r\n\r\n");
+  if (lf < 0 && crlf < 0) return null;
+  const crlfFirst = crlf >= 0 && (lf < 0 || crlf < lf);
+  const at = crlfFirst ? crlf : lf;
+  return { block: pending.slice(0, at), rest: pending.slice(at + (crlfFirst ? 4 : 2)) };
+}
+
+/** The version one event block reports, or null when it is not a version event. */
+function versionIn(block: string): number | null {
+  let event = "message";
+  let data = "";
+  for (const line of block.split("\n")) {
+    if (line.startsWith("event:")) event = line.slice("event:".length).trim();
+    else if (line.startsWith("data:")) data += line.slice("data:".length).trim();
+  }
+  // No data is not version 0: `Number("")` is 0, and refetching on it would make
+  // a malformed event look like a real change.
+  if (event !== "version" || data === "") return null;
+  const version = Number(data);
+  return Number.isFinite(version) ? version : null;
 }
 
 /** One path a commit would carry, with git's own two-letter status: `??` is

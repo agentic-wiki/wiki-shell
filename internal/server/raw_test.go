@@ -51,13 +51,13 @@ func newAssetServer(t *testing.T) (*Server, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(s, nil), dir
+	return New(s, nil, "localhost", 0), dir
 }
 
 func rawGet(t *testing.T, srv *Server, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	srv.ServeHTTP(rec, browserRequest(srv, http.MethodGet, path, nil))
 	return rec
 }
 

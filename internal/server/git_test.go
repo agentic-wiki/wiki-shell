@@ -55,7 +55,7 @@ func newGitServer(t *testing.T) (*Server, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(s, nil), remote
+	return New(s, nil, "localhost", 0), remote
 }
 
 func gitStatus(t *testing.T, srv *Server, path string) gitResult {
@@ -203,7 +203,7 @@ func sendFor[T any](t *testing.T, srv *Server, method, path string, body any, wa
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, httptest.NewRequest(method, path, bytes.NewReader(raw)))
+	srv.ServeHTTP(rec, browserRequest(srv, method, path, bytes.NewReader(raw)))
 	if rec.Code != want {
 		t.Fatalf("%s %s = %d, want %d: %s", method, path, rec.Code, want, rec.Body)
 	}

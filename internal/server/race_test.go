@@ -22,7 +22,7 @@ func TestConcurrentRequestsAndRebuilds(t *testing.T) {
 
 	get := func(path string) {
 		rec := httptest.NewRecorder()
-		srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		srv.ServeHTTP(rec, browserRequest(srv, http.MethodGet, path, nil))
 		if rec.Code != http.StatusOK {
 			t.Errorf("GET %s = %d", path, rec.Code)
 		}

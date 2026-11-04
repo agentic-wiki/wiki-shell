@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/agentic-wiki/wikiview/internal/store"
 )
@@ -184,6 +185,17 @@ func (s *Server) Close() {
 	}
 }
 
+// heartbeat is how often a quiet stream says it is still there.
+//
+// The client treats a connection that delivers nothing for twice this as dead
+// and reconnects, so a stream that is merely idle must keep speaking: without it
+// a healthy reader is torn down and reconnected every half minute. A comment
+// line is enough — it carries no data and every SSE reader ignores it.
+//
+// A variable rather than a constant so a test can watch one arrive without
+// waiting fifteen seconds for it.
+var heartbeat = 15 * time.Second
+
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -191,13 +203,15 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	// Proxies that buffer would defeat the point of streaming.
 	w.Header().Set("X-Accel-Buffering", "no")
 
 	ch := s.events.subscribe()
 	defer s.events.unsubscribe(ch)
+
+	ping := time.NewTicker(heartbeat)
+	defer ping.Stop()
 
 	// The current version up front, so a client that connects after a change
 	// discovers it is stale without waiting for the next one.
@@ -209,6 +223,9 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			return // the client went away
 		case <-s.events.closing:
 			return // the server is shutting down; end the stream so it can
+		case <-ping.C:
+			fmt.Fprint(w, ": ping\n\n")
+			flusher.Flush()
 		case v := <-ch:
 			writeEvent(w, flusher, v)
 		}

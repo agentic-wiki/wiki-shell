@@ -21,7 +21,11 @@ export function State({
   title: ReactNode;
   detail?: ReactNode;
   action?: ReactNode;
-  /** Announced as it appears, for a state that is transient: loading. */
+  /** Announced as it appears. For a state that is transient (loading) that is
+   *  all it does; for a steady one that replaces the page under the user — the
+   *  unauthenticated screen, reached when the server refuses a stream mid-session
+   *  — the announcement is the only thing that tells a screen-reader user the
+   *  page changed, since there is no action to move focus to. */
   live?: boolean;
   /** The glyph turns, for a state that is waiting on something. */
   spinning?: boolean;
@@ -69,6 +73,14 @@ export const StateIcon = {
       <path d="M2 2l20 20" />
       <path d="M8.5 16.5a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 5.2-2.8M19 12.9a10 10 0 0 0-2.1-1.4M1.4 9a15 15 0 0 1 4.2-2.7M22.6 9a15 15 0 0 0-11.7-3.9" />
       <path d="M12 20h.01" />
+    </>
+  ),
+  /** A key: something that needs access, not something that went wrong. */
+  key: (
+    <>
+      <circle cx="7.5" cy="12" r="4" />
+      <path d="M11.5 12h9" />
+      <path d="M17.5 12v3.5M20.5 12v2.5" />
     </>
   ),
   board: (

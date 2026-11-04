@@ -43,19 +43,7 @@ func main() {
 		return
 	}
 
-	// Reachable from this machine and reachable from the network are different
-	// choices, and only one of them is the default. wikiview has no
-	// authentication and writes to the bundle, so anyone who can reach it can
-	// read every entry and tick boxes in them. Said once, where the choice is
-	// made, rather than assumed to be understood.
-	if !loopback(opts.host) {
-		log.Printf("warning: %s accepts connections from the network, and wikiview has no authentication", opts.host)
-	}
-
-	// Joined here rather than carried as two values: JoinHostPort is what knows
-	// that an IPv6 host needs brackets, and every layer below this wants one
-	// address anyway.
-	if err := run(opts.root, net.JoinHostPort(opts.host, strconv.Itoa(opts.port))); err != nil {
+	if err := run(opts); err != nil {
 		fmt.Fprintln(os.Stderr, "wikiview:", err)
 		os.Exit(1)
 	}
@@ -87,7 +75,7 @@ func parseArgs(args []string) (options, error) {
 			"Serves the agentic-wiki bundle at path, or the working directory.\n\n")
 		fs.PrintDefaults()
 	}
-	host := fs.String("host", "localhost", "interface to listen on (0.0.0.0 for all of them)")
+	host := fs.String("host", "localhost", "interface to listen on; any non-loopback address (0.0.0.0 for all) prints a link with a token")
 	port := fs.Int("port", 8080, "port to listen on")
 	showVersion := fs.Bool("version", false, "print the version and exit")
 
@@ -119,24 +107,26 @@ func parseArgs(args []string) (options, error) {
 	return opts, nil
 }
 
-// loopback reports whether a host is reachable only from this machine. An empty
-// host is not: to a listener it means every interface.
-func loopback(host string) bool {
-	if host == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
-}
-
-func run(root, addr string) error {
-	s, err := store.Open(root)
+func run(opts options) error {
+	s, err := store.Open(opts.root)
 	if err != nil {
 		return err
 	}
-	srv := server.New(s, ui.Assets())
+
+	// Listened for before the server is built, because the printed URL needs
+	// the port, and with --port 0 it is known only once the socket is open.
+	ln, err := net.Listen("tcp", net.JoinHostPort(opts.host, strconv.Itoa(opts.port)))
+	if err != nil {
+		return err
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	srv := server.New(s, ui.Assets(), opts.host, port)
 	idx := s.View().Index
-	log.Printf("serving %s (%d entries) on http://%s", s.Dir, len(idx.Entries), addr)
+	// The address to open. On a network bind it is the one place the token is
+	// printed, in the fragment, so it never reaches this server, a request log
+	// or a Referer.
+	log.Printf("serving %s (%d entries)", s.Dir, len(idx.Entries))
+	log.Printf("open %s", srv.URL())
 
 	// `wiki` never looks inside `[tool.*]`, deliberately, so nothing else will
 	// ever tell you that a board points at a folder you renamed or that a key is
@@ -167,7 +157,6 @@ func run(root, addr string) error {
 	}()
 
 	httpSrv := &http.Server{
-		Addr:    addr,
 		Handler: srv,
 		// A connection that opens and never sends headers would otherwise hold a
 		// goroutine for as long as the process runs. Cheap to bound, and the only
@@ -179,7 +168,7 @@ func run(root, addr string) error {
 		IdleTimeout: 2 * time.Minute,
 	}
 	errc := make(chan error, 1)
-	go func() { errc <- httpSrv.ListenAndServe() }()
+	go func() { errc <- httpSrv.Serve(ln) }()
 
 	select {
 	case err := <-errc:

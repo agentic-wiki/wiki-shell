@@ -50,7 +50,7 @@ func newGraphServer(t *testing.T, toml string) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(s, nil)
+	return New(s, nil, "localhost", 0)
 }
 
 func graphTOML(extra string) string {

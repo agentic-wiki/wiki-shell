@@ -62,15 +62,19 @@ The path defaults to the working directory and walks up looking for `wiki.toml`,
 
 | Flag | Default | |
 | --- | --- | --- |
-| `--host` | `localhost` | interface to listen on, `0.0.0.0` for all of them |
+| `--host` | `localhost` | interface to listen on; any non-loopback address (`0.0.0.0` for all) turns the token on |
 | `--port` | `8080` | port to listen on |
 | `--version` | | print the version and exit |
 
 ```sh
-wikiview my-kb --host 0.0.0.0 --port 3000
+wikiview my-kb --port 3000
 ```
 
-**`--host 0.0.0.0` puts it on your network.** wikiview has no authentication and writes to the bundle, so anyone who can reach it can read every entry and tick boxes in them. It warns on startup when you do this. Put it behind something that authenticates, or keep it on localhost.
+**On localhost, open the address it prints.** Nothing else is needed, and a bookmark keeps working. Behind the scenes, every `/api` call carries an `X-Wikiview-Token` header with any value. A web page on another site cannot add that header, so it cannot write to your wiki through localhost. On a shared machine, every user of it can open your wiki.
+
+**On a network address, open the link it prints.** With `--host 0.0.0.0` or another non-loopback address, wikiview creates a token at every start and prints it in the link: `http://<this machine>:8080/#t=…`. With `0.0.0.0`, the link names the machine by its hostname. If another machine cannot resolve that name, use this machine's IP in its place. Open the link once: the app keeps the token for that tab and takes it out of the address bar. A tab without it says what to do and shows no entry. The token lasts until the process exits, and a restart prints a new one.
+
+There is no TLS, so the token and every page cross the network in clear text. Use a network address only on a network you trust.
 
 ## A quick tour
 
@@ -185,7 +189,11 @@ Drag a node and its neighbours follow; point at one to light up what it touches,
 
 ## HTTP API
 
-Useful for scripting against a running server.
+Useful for scripting against a running server. One rule: every `/api` request carries `X-Wikiview-Token`. If the server has a token (network bind), the value must equal it. So on localhost any value works, and on a network address you copy the token from the printed link (the fragment is never sent to the server, so the link itself cannot be used here). On a network address, `/raw` needs the `wikiview_raw_<port>` cookie that every accepted `/api` response sets; the browser does this for you.
+
+```sh
+curl -H "X-Wikiview-Token: local" http://localhost:8080/api/bundle
+```
 
 ```
 GET  /api/bundle              the bundle itself: dir, spec, entry count, [tool.*] tables, version, declared boards and graphs, and every tag in first-appearance order
