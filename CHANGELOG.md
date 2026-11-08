@@ -2,6 +2,15 @@
 
 All notable changes to `wikiview` are documented here. This project follows [semantic versioning](https://semver.org); while pre-1.0, breaking changes bump the minor version.
 
+## v0.17.0
+
+### Changed
+
+- **Links, references and titles follow `wiki` v0.17.0's one rule**, the same as the CLI, instead of wikiview's own copies:
+  - **an untitled entry is named by its first `#` heading** (instead of its file name) on its page, in the tab title, on cards and graphs, and in the Changed and Read later lists. The file tree still shows file names. A folder's untitled `index.md` with a `#` heading is now named by that heading, not "<Folder> (index)".
+  - **a frontmatter reference with an `#anchor`** (`blockers: [./b.md#step-2]`) now makes its edge on a graph and its blocker on a board;
+  - **an image whose name holds a space now loads**, and a link's `%`-encoded path or `?query` finds its file. A link climbing out of the bundle, however it is spelled, gets no file.
+
 ## v0.16.0
 
 ### Changed

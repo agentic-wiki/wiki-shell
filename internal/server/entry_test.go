@@ -175,12 +175,12 @@ func TestFrontmatterRefsAreFoundByValue(t *testing.T) {
 	if _, ok := byKey["title"]; ok {
 		t.Errorf("a non-path string became a reference: %v", byKey)
 	}
-	// A readable name travels, so the client shows a name rather than a path —
-	// and it is the target's filename, the same name the tree gives it, not the
-	// title the target happens to carry.
+	// A readable name travels, so the client shows a name rather than a path:
+	// the target's title by the wiki's rule, as a card's blocker names it, else
+	// its filename made readable.
 	for _, r := range got.FrontmatterRefs {
-		if r.To == "/target.md" && r.Label != "Target" {
-			t.Errorf("ref label = %q, want the target's filename made readable", r.Label)
+		if r.To == "/target.md" && r.Label != "The Target" {
+			t.Errorf("ref label = %q, want the target's title", r.Label)
 		}
 	}
 }

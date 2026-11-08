@@ -32,7 +32,8 @@ export function find(root: TreeNode, path: string): TreeNode | EntryStub | undef
  *
  * Three answers, in order:
  *
- * 1. The entry's own title, when it has one.
+ * 1. The entry's own title — its frontmatter title, or else its first `#`
+ *    heading — when it has one.
  * 2. Its folder, for an `index.md`, because "Index" says nothing in a list of
  *    rows with no folder drawn around them — and every folder's front door
  *    reads the same. Not a new rule: the server names a backlink this way, in

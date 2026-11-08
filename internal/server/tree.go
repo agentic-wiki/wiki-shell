@@ -109,7 +109,7 @@ func buildTree(v store.View) *TreeNode {
 			Name:             path.Base(e.Path),
 			Type:             e.Type,
 			Label:            titleFromFilename(e.Path),
-			Title:            e.Field("title"),
+			Title:            e.Title(),
 			FrontmatterError: frontmatterError(e),
 			ChangedAt:        v.ChangedAt[e.Path],
 			Updated:          updated(e),

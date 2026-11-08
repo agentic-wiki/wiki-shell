@@ -295,6 +295,21 @@ const sectionsEntry: Entry = {
   updated: new Date(Date.now() - 3 * 3600_000).toISOString(),
 };
 
+/** Untitled, with prose before its first H1, so the server takes its title from
+ *  that heading: the case where a prepended title would repeat a later H1. */
+const lateHeading: Entry = {
+  path: "/notes/fees.md",
+  title: "Late fees",
+  type: "note",
+  frontmatter: {},
+  body: "Read this before invoicing.\n\n# Late fees\n\nTwo percent a month.\n",
+  links: [],
+  frontmatterRefs: [],
+  backlinks: [],
+  headings: [{ level: 1, text: "Late fees", id: "late-fees", line: 3, bodyLine: 3 }],
+  checkboxes: [],
+};
+
 function stubFetch() {
   fetches = 0;
   drafts = [];
@@ -357,6 +372,7 @@ function stubFetch() {
     if (url.includes("/api/entry/notes/differs.md")) return body(headingDiffers);
     if (url.includes("/api/entry/notes/wide.md")) return body(tableEntry);
     if (url.includes("/api/entry/notes/sections.md")) return body(sectionsEntry);
+    if (url.includes("/api/entry/notes/fees.md")) return body(lateHeading);
     // Only the entries the fixture actually declares. A catch-all here would
     // mean a "missing" entry still returned content, and the not-found path
     // would never be exercised.
@@ -1026,6 +1042,18 @@ test("a title is prepended only when the body does not already name itself", asy
   expect(headings).toHaveLength(1);
   expect(headings[0]).toContain("Steps");
   expect(headings[0]).not.toContain("Deployment runbook");
+});
+
+// An untitled entry takes its title from its first heading. When prose comes
+// before that heading, the title would sit above the body and the heading again
+// inside it: the heading shows once, where its author put it.
+test("a title that a later H1 already says is not prepended", async () => {
+  await mountAt("/wiki/notes/fees.md");
+  const article = document.querySelector("article")!;
+  const headings = [...article.querySelectorAll("h1")].map((h) => h.textContent);
+  expect(headings).toHaveLength(1);
+  expect(headings[0]).toContain("Late fees");
+  expect(article.textContent).toContain("Read this before invoicing.");
 });
 
 // The title comes first whichever source it has — borrowed from the entry, or

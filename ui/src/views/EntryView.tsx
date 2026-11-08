@@ -276,6 +276,11 @@ function alreadyNamed(entry: Entry): boolean {
   // and the entry's title goes above it like above any other body.
   if (entry.headings.some((h) => h.bodyLine === first + 1 && h.level === 1)) return true;
 
+  // Or an H1 further down says exactly the title: an untitled entry takes its
+  // title from its first heading, and prose before it would otherwise put the
+  // same heading above the body and again in it.
+  if (entry.headings.some((h) => h.level === 1 && h.text === entry.title)) return true;
+
   // Or the first line already says the title in prose — "**A markdown reader by
   // default.**" under a title about the reader. Compared loosely, on lowercase
   // and stripped of markdown emphasis, because the question is whether a reader

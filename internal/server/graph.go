@@ -131,7 +131,7 @@ func buildGraph(v store.View, g config.Graph) GraphView {
 		out.Nodes = append(out.Nodes, Node{
 			Path:      p,
 			Label:     nodeLabel(p, v.Index.Bundle.Dir),
-			Title:     e.Field("title"),
+			Title:     e.Title(),
 			Type:      e.Type,
 			Neighbour: !filtered[p],
 		})
@@ -153,18 +153,8 @@ func linksFrom(idx *index.Index, e *index.Entry, entries map[string]*index.Entry
 	for _, l := range e.Links {
 		add(l.Target, "body")
 	}
-	for key := range e.Frontmatter() {
-		if strings.HasPrefix(key, "_") {
-			continue // the index's namespace, not the author's
-		}
-		for _, value := range e.FieldList(key) {
-			if !strings.HasSuffix(value, ".md") {
-				continue
-			}
-			if to, outside := idx.ResolveLink(e.Path, value); !outside {
-				add(to, key)
-			}
-		}
+	for _, r := range authorRefs(e) {
+		add(r.Path, r.Key)
 	}
 	return out
 }

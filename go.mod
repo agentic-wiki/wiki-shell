@@ -3,7 +3,7 @@ module github.com/agentic-wiki/wikiview
 go 1.24
 
 require (
-	github.com/agentic-wiki/wiki v0.16.1
+	github.com/agentic-wiki/wiki v0.17.0
 	github.com/fsnotify/fsnotify v1.10.1
 )
 

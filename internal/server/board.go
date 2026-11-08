@@ -244,7 +244,7 @@ func buildBoard(v store.View, board config.Board, declared bool) BoardView {
 		cards[value] = append(cards[value], Card{
 			Path:      e.Path,
 			Label:     titleFromFilename(e.Path),
-			Title:     e.Field("title"),
+			Title:     e.Title(),
 			Type:      e.Type,
 			Lane:      laneOf(e, board.Lane),
 			BlockedBy: waiting[e.Path],
@@ -409,54 +409,38 @@ func laneValues(entries []*index.Entry, field string) []string {
 // to be looking at, and counting only the board's would make the same task read
 // differently from two places.
 //
-// A blocker resolves the way any frontmatter reference does — a `.md` value,
-// resolved relative to the entry, inside the bundle — so what counts as one has
-// a single rule. It is counted whether or not the file exists yet: a task
-// waiting on something nobody has written is waiting all the same, and this
-// format expects the link before the file.
+// A blocker is a frontmatter reference (the library's rule), counted whether
+// or not the file exists yet.
 func blockerEdges(idx *index.Index, field string) (waiting, blocking map[string]int) {
 	waiting, blocking = map[string]int{}, map[string]int{}
 	if field == "" {
 		return waiting, blocking
 	}
 	for _, e := range idx.Entries {
-		for _, value := range e.FieldList(field) {
-			if !strings.HasSuffix(value, ".md") {
-				continue
-			}
-			target, outside := idx.ResolveLink(e.Path, value)
-			if outside {
-				continue
-			}
+		for _, r := range blockers(e, field) {
 			waiting[e.Path]++
-			blocking[target]++
+			blocking[r.Path]++
 		}
 	}
 	return waiting, blocking
 }
 
+// blockers are the entry's references in the blocker field.
+func blockers(e *index.Entry, field string) []index.Ref {
+	return slices.DeleteFunc(authorRefs(e), func(r index.Ref) bool { return r.Key != field })
+}
+
 // firstBlocker names the first entry an entry waits on, by the rule
 // blockerEdges counts with, or "" when it waits on nothing.
 func firstBlocker(idx *index.Index, e *index.Entry, field string) string {
-	if field == "" {
+	refs := blockers(e, field)
+	if len(refs) == 0 {
 		return ""
 	}
-	for _, value := range e.FieldList(field) {
-		if !strings.HasSuffix(value, ".md") {
-			continue
-		}
-		target, outside := idx.ResolveLink(e.Path, value)
-		if outside {
-			continue
-		}
-		if src, err := idx.Resolve(target); err == nil {
-			if title := src.Field("title"); title != "" {
-				return title
-			}
-		}
-		return titleFromFilename(target)
+	if src, err := idx.Resolve(refs[0].Path); err == nil {
+		return nameOf(src)
 	}
-	return ""
+	return titleFromFilename(refs[0].Path) // not written yet
 }
 
 // laneOf reads a card's lane, or "" when the board has no lanes or the entry

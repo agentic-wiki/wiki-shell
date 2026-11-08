@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"net/url"
 	path2 "path"
 	"path/filepath"
 	"slices"
@@ -177,10 +178,7 @@ func (s *Server) handleEntry(w http.ResponseWriter, r *http.Request) {
 	}
 	offset := strings.Count(raw[:len(raw)-len(body)], "\n")
 
-	title := e.Field("title")
-	if title == "" {
-		title = titleFromFilename(e.Path)
-	}
+	title := nameOf(e)
 
 	view := EntryView{
 		Path:             e.Path,
@@ -210,7 +208,7 @@ func outgoing(idx *index.Index, e *index.Entry) []LinkView {
 		// carries. A missing `.md` deliberately gets nothing: that is knowledge
 		// not yet written, not a file to fetch.
 		if err != nil && !strings.HasSuffix(l.Target, ".md") {
-			asset = "/raw" + l.Target
+			asset = "/raw" + (&url.URL{Path: l.Target}).EscapedPath() // never an Outside link
 		}
 		out = append(out, LinkView{
 			Raw:    l.Raw,
@@ -249,23 +247,12 @@ func outgoing(idx *index.Index, e *index.Entry) []LinkView {
 // .md-ish string as broken would put warnings on data that is merely a string.
 func frontmatterRefs(idx *index.Index, e *index.Entry) []RefView {
 	out := []RefView{}
-	for key := range e.Frontmatter() {
-		if strings.HasPrefix(key, "_") {
-			continue // the index's namespace, not the author's
+	for _, r := range authorRefs(e) {
+		to, err := idx.Resolve(r.Path)
+		if err != nil {
+			continue // names no entry: ordinary text
 		}
-		for _, value := range e.FieldList(key) {
-			if !strings.HasSuffix(value, ".md") {
-				continue
-			}
-			target, outside := idx.ResolveLink(e.Path, value)
-			if outside {
-				continue
-			}
-			if _, err := idx.Resolve(target); err != nil {
-				continue // names no entry: ordinary text
-			}
-			out = append(out, RefView{Key: key, Value: value, To: target, Label: titleFromFilename(target)})
-		}
+		out = append(out, RefView{Key: r.Key, Value: r.Value, To: r.Path, Label: nameOf(to)})
 	}
 	// Sorted, so the same entry always produces the same response rather than one
 	// whose order depends on map iteration.
@@ -287,7 +274,7 @@ func incoming(idx *index.Index, path string) []BacklinkView {
 		// not say that.
 		title := ""
 		if src, err := idx.Resolve(r.From); err == nil {
-			title = src.Field("title")
+			title = src.Title()
 		}
 		if title == "" {
 			title = backlinkName(r.From)
@@ -412,4 +399,19 @@ func frontmatterError(e *index.Entry) string {
 		return err.Error()
 	}
 	return ""
+}
+
+// authorRefs are the entry's frontmatter references inside the bundle, by the
+// wiki library's rule, less the index's own keys (a leading underscore).
+func authorRefs(e *index.Entry) []index.Ref {
+	return slices.DeleteFunc(e.FrontmatterRefs(), func(r index.Ref) bool { return r.Outside || strings.HasPrefix(r.Key, "_") })
+}
+
+// nameOf is what an entry is called: its title by the wiki library's rule
+// (`title:`, else its first `#` heading), else its filename made readable.
+func nameOf(e *index.Entry) string {
+	if t := e.Title(); t != "" {
+		return t
+	}
+	return titleFromFilename(e.Path)
 }
