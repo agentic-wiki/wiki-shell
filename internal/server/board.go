@@ -51,6 +51,18 @@ type BoardView struct {
 	Fields []Field `json:"fields"`
 	// Declared is false for the built-in root board, which no config mentions.
 	Declared bool `json:"declared"`
+	// Unread are the entries under the board's path whose header couldn't be
+	// read, sorted by path. They have no fields, so no `where` can match them
+	// and no column holds them: listed here, they don't drop off the board
+	// without a word. Always present, empty when there are none.
+	Unread []Unread `json:"unread"`
+}
+
+// Unread is an entry whose header couldn't be read, and why.
+type Unread struct {
+	Path  string `json:"path"`
+	Label string `json:"label"`
+	Error string `json:"error"`
 }
 
 // Field is one frontmatter key in use, and what it holds.
@@ -194,18 +206,31 @@ func buildBoard(v store.View, board config.Board, declared bool) BoardView {
 		Where:    board.Where,
 		Blockers: board.Blockers,
 		Declared: declared,
+		Unread:   []Unread{},
 	}
 
 	prefix := board.Path
 	if prefix == "/" {
 		prefix = "" // the whole bundle, which is what Filter reads an empty prefix as
 	}
-	entries := v.Index.Filter(prefix, board.Filters)
+	// An unread entry has no fields, so it matches an empty `where`, or one of
+	// only `!=` filters, and would sit in some column as a card with no status.
+	// Every board drops it here, and lists it apart instead.
+	entries := slices.DeleteFunc(v.Index.Filter(prefix, board.Filters), func(e *index.Entry) bool {
+		return e.FrontmatterErr() != nil
+	})
 
 	// The inventory is taken before the board's own filter, not after: you use it
 	// to choose that filter, and a list narrowed by the filter you are replacing
 	// can only ever offer what you already have.
-	out.Fields = fieldsIn(v.Index.Filter(prefix, nil))
+	inScope := v.Index.Filter(prefix, nil)
+	out.Fields = fieldsIn(inScope)
+	for _, e := range inScope {
+		if reason := frontmatterError(e); reason != "" {
+			out.Unread = append(out.Unread, Unread{Path: e.Path, Label: titleFromFilename(e.Path), Error: reason})
+		}
+	}
+	slices.SortFunc(out.Unread, func(a, b Unread) int { return strings.Compare(a.Path, b.Path) })
 
 	// Grouped first, then ordered, because the two rules are different: which
 	// columns exist comes from the entries, and what order they sit in comes

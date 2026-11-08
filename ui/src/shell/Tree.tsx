@@ -60,7 +60,35 @@ function SavedMark() {
 }
 
 /**
- * The two marks a row can carry, in a fixed two-slot column.
+ * A warning saying this entry's header couldn't be read, with the reason as its
+ * name and its tooltip. Amber, the colour of something to fix rather than of a
+ * failure: the entry still opens, and its body still renders.
+ */
+function UnreadableMark({ error }: { error: string }) {
+  return (
+    <span
+      className="text-warn"
+      role="img"
+      title={`Frontmatter couldn't be read: ${error}`}
+      aria-label={`Frontmatter couldn't be read: ${error}`}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className="size-3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        aria-hidden
+      >
+        <path d="M12 3 2 21h20z" strokeLinejoin="round" />
+        <path d="M12 10v5M12 18v.01" strokeLinecap="round" />
+      </svg>
+    </span>
+  );
+}
+
+/**
+ * The marks a row can carry, in a fixed column of slots.
  *
  * Each glyph sits centred in a slot of its own rather than shoved against the
  * row's edge. Flush-right by box they painted a jagged edge: the dot fills its
@@ -72,11 +100,22 @@ function SavedMark() {
  * The bookmark first, the dot outermost: the dot is the news, so it is the one
  * the edge of the tree is scanned for. An empty slot still holds its width, which
  * is what keeps a dot-only row and a both-marked row sharing the same dot column.
+ * A header that couldn't be read adds its warning in front of the others, and
+ * only on the rows that have one.
  */
-function Marks({ saved, changed }: { saved: boolean; changed: boolean }) {
-  if (!saved && !changed) return null;
+function Marks({
+  saved,
+  changed,
+  unreadable,
+}: {
+  saved: boolean;
+  changed: boolean;
+  unreadable?: string;
+}) {
+  if (!saved && !changed && !unreadable) return null;
   return (
     <span className="ml-auto flex shrink-0 items-center gap-1">
+      {unreadable && <UnreadableMark error={unreadable} />}
       <span className="grid w-3 place-items-center">{saved && <SavedMark />}</span>
       <span className="grid w-1.5 place-items-center">{changed && <Unseen />}</span>
     </span>
@@ -300,7 +339,11 @@ function Level({
             title={e.name}
           >
             <span className="truncate">{e.label}</span>
-            <Marks saved={saved.has(e.path)} changed={unseen.has(e.path)} />
+            <Marks
+              saved={saved.has(e.path)}
+              changed={unseen.has(e.path)}
+              unreadable={e.frontmatterError}
+            />
           </NavLink>
         </li>
       ))}

@@ -2,6 +2,16 @@
 
 All notable changes to `wikiview` are documented here. This project follows [semantic versioning](https://semver.org); while pre-1.0, breaking changes bump the minor version.
 
+## v0.16.0
+
+### Changed
+
+- **Frontmatter reads as `wiki` v0.16.1 reads it**, the same rules the CLI uses. `'company''s'` reads `company's`, spaces inside quotes are kept, and a list or map inside a value shows as one line of YAML (`{path: a.pdf, pages: 40}`). A card move writes through `wiki`'s own write rules: a header it can't edit safely (a flow-map header, a key written twice) is refused with the reason, and the file is left as it was.
+- **A page whose frontmatter can't be read says so.** Such a page (not valid YAML, or over a limit) has no fields. `/api/entry` and its tree entry carry `frontmatterError`, the reason. A board lists the ones under its path in `unread` (path, label and error), and never as a card, so they don't drop off the board without a word. The app shows a notice above the page's body, marks the entry in the tree with the reason, and lists the board's unread pages above its columns, each a link with its reason. A refused card move puts the card back and shows the reason.
+- **A board's `where` follows `wiki`'s "no value" rule**, so a declared board can hold different cards after the upgrade. `key=` now also matches a key that is `~`, `null`, `[]`, `{}` or a list of empty items, and `key!=` leaves those out.
+- **Empty list items are kept** (a bare `-`, `- ''`, `[a, ""]`), as `wiki` keeps them. An empty tag is still no tag: the bundle's tags and a card's tags leave it out.
+- **Heading anchors come from `wiki`** (`Heading.ID`), the rule `wiki check` tests links against, so a page and `check` can't disagree. A heading with no letter or digit (`## ???`) has no anchor, where it used to get `#heading`, which `check` never accepted.
+
 ## v0.15.0
 
 ### Changed

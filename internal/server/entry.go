@@ -10,7 +10,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/agentic-wiki/wiki/index"
-	"github.com/agentic-wiki/wikiview/internal/slug"
 )
 
 // EntryView is one entry as the reader needs it.
@@ -43,8 +42,12 @@ type EntryView struct {
 	Title       string         `json:"title"`
 	Type        string         `json:"type"`
 	Frontmatter map[string]any `json:"frontmatter"`
-	Body        string         `json:"body"`
-	Links       []LinkView     `json:"links"`
+	// FrontmatterError is why the header couldn't be read (not valid YAML, or
+	// over a limit), empty when it was. The entry then has no fields, and the
+	// page says so rather than looking blank.
+	FrontmatterError string     `json:"frontmatterError,omitempty"`
+	Body             string     `json:"body"`
+	Links            []LinkView `json:"links"`
 	// FrontmatterRefs are frontmatter values that name an entry in this bundle.
 	// Keyed by field and value so a client can look one up without deciding for
 	// itself what looks like a path.
@@ -180,17 +183,18 @@ func (s *Server) handleEntry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view := EntryView{
-		Path:            e.Path,
-		Title:           title,
-		Type:            e.Type,
-		Frontmatter:     e.Frontmatter(),
-		Body:            body,
-		Links:           outgoing(idx, e),
-		FrontmatterRefs: frontmatterRefs(idx, e),
-		Backlinks:       incoming(idx, e.Path),
-		Headings:        headings(e, offset),
-		Checkboxes:      checkboxes(e, offset),
-		Updated:         updated(e),
+		Path:             e.Path,
+		Title:            title,
+		Type:             e.Type,
+		Frontmatter:      e.Frontmatter(),
+		FrontmatterError: frontmatterError(e),
+		Body:             body,
+		Links:            outgoing(idx, e),
+		FrontmatterRefs:  frontmatterRefs(idx, e),
+		Backlinks:        incoming(idx, e.Path),
+		Headings:         headings(e, offset),
+		Checkboxes:       checkboxes(e, offset),
+		Updated:          updated(e),
 	}
 	writeJSON(w, http.StatusOK, view)
 }
@@ -386,15 +390,9 @@ func readableName(name string) string {
 }
 
 func headings(e *index.Entry, offset int) []HeadingView {
-	texts := make([]string, len(e.Headings))
-	for i, h := range e.Headings {
-		texts[i] = h.Text
-	}
-	ids := slug.Headings(texts)
-
 	out := make([]HeadingView, 0, len(e.Headings))
-	for i, h := range e.Headings {
-		out = append(out, HeadingView{Level: h.Level, Text: h.Text, ID: ids[i], Line: h.Line, BodyLine: h.Line - offset})
+	for _, h := range e.Headings {
+		out = append(out, HeadingView{Level: h.Level, Text: h.Text, ID: h.ID, Line: h.Line, BodyLine: h.Line - offset})
 	}
 	return out
 }
@@ -405,4 +403,13 @@ func checkboxes(e *index.Entry, offset int) []CheckboxView {
 		out = append(out, CheckboxView{Line: c.Line, BodyLine: c.Line - offset, Done: c.Done, Text: c.Text})
 	}
 	return out
+}
+
+// frontmatterError is the text of why an entry's header couldn't be read, or
+// "" when it was read.
+func frontmatterError(e *index.Entry) string {
+	if err := e.FrontmatterErr(); err != nil {
+		return err.Error()
+	}
+	return ""
 }

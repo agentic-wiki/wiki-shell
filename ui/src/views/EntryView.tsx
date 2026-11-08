@@ -212,6 +212,18 @@ export function EntryView({
         )}
         <Meta entry={entry} />
         <Frontmatter entry={entry} destination={destination} properties={properties} />
+        {/* A header the library couldn't read gives no fields, so the page
+            would otherwise look as if it simply had none. Said above the body,
+            which still renders, with the library's own reason. */}
+        {entry.frontmatterError && (
+          <p
+            role="status"
+            className="text-warn bg-warn/8 border-warn/25 mb-5 rounded-lg border px-2.5 py-2 text-xs"
+          >
+            This entry&apos;s frontmatter couldn&apos;t be read: {entry.frontmatterError}. Fix it,
+            then run <code>wiki check</code>.
+          </p>
+        )}
         <Markdown entry={title?.hoisted ?? entry} onToggleCheckbox={toggle} destination={destination} />
         <Connections entry={entry} destination={destination} />
       </article>

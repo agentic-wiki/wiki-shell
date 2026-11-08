@@ -113,6 +113,9 @@ export interface Entry {
   title: string;
   type: string;
   frontmatter: Record<string, unknown>;
+  /** Why the header couldn't be read, as the wiki library says it; absent when
+   *  it reads. An unreadable header gives no fields, but the body still shows. */
+  frontmatterError?: string;
   /** The markdown as written. The only representation of the content. */
   body: string;
   links: Link[];
@@ -143,6 +146,8 @@ export interface EntryStub {
   /** The bundle version this entry's content last moved at. Compared against the
    *  version you last saw it at, which is what marks it as changed. */
   changedAt: number;
+  /** Why the header couldn't be read, as on `Entry`; absent when it reads. */
+  frontmatterError?: string;
   /** Wall-clock time of the last change, as on `Entry`. */
   updated?: string;
   /** The distinct entries it is linked with, either way: its degree on a graph. */
@@ -263,6 +268,18 @@ export interface Board {
   fields: Field[];
   /** False for the built-in `root`, which no config mentions. */
   declared: boolean;
+  /** Entries under the board's path whose header couldn't be read. They have no
+   *  fields, so no column can hold them; listed here instead. Always present. */
+  unread: Unread[];
+}
+
+/** An entry a board couldn't place, because its header couldn't be read. */
+export interface Unread {
+  path: string;
+  /** The filename made readable, as the tree names it. */
+  label: string;
+  /** Why the header couldn't be read. */
+  error: string;
 }
 
 /** A graph a bundle declares. Ids are their own namespace, apart from boards'. */

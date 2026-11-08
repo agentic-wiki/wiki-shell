@@ -1129,6 +1129,7 @@ const boardFixture = {
   // vocabulary it knows, so high before low without anybody configuring it.
   lanes: ["high", "low", ""],
   declared: true,
+  unread: [],
   // What the folder holds, taken before the board's own filter — which is why
   // `type=note` is offerable even though no card is one. `title` has too many
   // values to be a choice, so it carries none.
@@ -1448,6 +1449,22 @@ test("a refused move puts the card back", async () => {
 
   expect(cardIn("todo", "A")).toBeTruthy();
   expect(cardIn("blocked", "A")).toBeUndefined();
+});
+
+// A header the library cannot edit safely (a flow-map header, say) is refused
+// with a 422 whose `error` says why. The card goes back, and that text is shown
+// as it came, because it names the file and what to do.
+test("a move the server cannot write puts the card back and says why", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  captureWrites(422);
+
+  await dragTo(cardIn("todo", "A")!, columnEl("blocked"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  expect(cardIn("todo", "A")).toBeTruthy();
+  expect(cardIn("blocked", "A")).toBeUndefined();
+  expect(toastText()).toBe(refusal);
 });
 
 // The browser synthesizes a click from the press and the release however far the
@@ -2111,7 +2128,7 @@ test("with no boards declared the panel offers to make one", async () => {
 // blank page: the server sent `columns: null` and the view read a list it had
 // been promised.
 test("a board with nothing on it says why, and offers a way out", async () => {
-  const empty = { path: "/", id: "root", name: "My kb", field: "status", where: ["type=task"], declared: false, columns: [] };
+  const empty = { path: "/", id: "root", name: "My kb", field: "status", where: ["type=task"], declared: false, columns: [], unread: [] };
   await mountWithNoBoards("/kanban/root", empty);
 
   const main = document.querySelector("main")!;
@@ -2127,7 +2144,7 @@ test("a board with nothing on it says why, and offers a way out", async () => {
 test("a declared board with no cards yet says what will fill it", async () => {
   const empty = {
     path: "/notes", id: "later", name: "Later", field: "status", declared: true, columns: [],
-    where: ["type=idea", "status!=done"],
+    where: ["type=idea", "status!=done"], unread: [],
   };
   await mountWithNoBoards("/kanban/later", empty);
 
@@ -2141,7 +2158,7 @@ test("a declared board with no cards yet says what will fill it", async () => {
 // With no filter, every entry is a card, and saying "matching" nothing would
 // read as a sentence with a hole in it.
 test("a board of every entry says so when it is empty", async () => {
-  const empty = { path: "/notes", id: "all", name: "All", field: "status", declared: true, columns: [], where: [] };
+  const empty = { path: "/notes", id: "all", name: "All", field: "status", declared: true, columns: [], where: [], unread: [] };
   await mountWithNoBoards("/kanban/all", empty);
   expect(document.querySelector("main")!.textContent).toContain("Any entry under /notes becomes a card here.");
 });
@@ -5049,6 +5066,116 @@ test("moving a card says where it went, and a refusal says why", async () => {
   } finally {
     restore();
   }
+});
+
+// ─── Headers that couldn't be read ──────────────────────────────────────────
+
+/** What the wiki library says about a header that isn't valid YAML, as the
+ *  server passes it on. */
+const headerError = "line 2: mapping values are not allowed in this context";
+
+/** Answers the URLs containing each key with its value, and everything else as
+ *  before. Installed after mounting, since mounting installs the base stub. */
+function serveAlso(fixtures: Record<string, unknown>) {
+  const real = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    for (const [key, value] of Object.entries(fixtures)) {
+      if (url.includes(key)) {
+        return Promise.resolve(
+          new Response(JSON.stringify(value), { headers: { "content-type": "application/json" } }),
+        );
+      }
+    }
+    return real(input, init);
+  }) as typeof fetch;
+}
+
+// A header that isn't valid YAML reads with no fields. The entry says so above
+// the body, which still renders, and the tree marks the entry with the reason.
+test("an entry whose header couldn't be read says so, and the tree marks it", async () => {
+  await mountAt("/wiki/index.md");
+  const brokenTree: TreeNode = structuredClone(tree);
+  // /notes/b.md, the second entry under /notes.
+  brokenTree.children[0]!.entries[1]!.frontmatterError = headerError;
+  serveAlso({
+    "/api/tree": brokenTree,
+    "/api/entry/notes/b.md": {
+      ...entry,
+      path: "/notes/b.md",
+      title: "B",
+      frontmatter: {},
+      frontmatterError: headerError,
+      body: "The body still shows.\n",
+    },
+  });
+  // A version the app has not seen refetches the tree. The first message is the
+  // stream's greeting, which the app does not act on.
+  await act(async () => emitVersion(98));
+  await act(async () => emitVersion(99));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  await act(async () => navigateTo("/wiki/notes/b.md"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const text = document.querySelector("article")?.textContent ?? "";
+  expect(text).toContain(
+    `This entry's frontmatter couldn't be read: ${headerError}. Fix it, then run wiki check.`,
+  );
+  expect(text).toContain("The body still shows.");
+
+  // Named for what it is, then why, so the mark makes sense without the page.
+  const label = `Frontmatter couldn't be read: ${headerError}`;
+  const mark = document.querySelector(`aside [role='img'][aria-label="${label}"]`);
+  expect(mark).not.toBeNull();
+  expect(mark?.getAttribute("title")).toBe(label);
+  // Only on that entry.
+  expect(document.querySelectorAll("aside [role='img']")).toHaveLength(1);
+});
+
+// An entry that reads shows no notice and no mark.
+test("an entry whose header reads has no notice", async () => {
+  await mountAt("/wiki/notes/a.md");
+  expect(document.querySelector("article")?.textContent).not.toContain("couldn't be read");
+  expect(document.querySelector("aside [role='img']")).toBeNull();
+});
+
+// Entries with no fields can't match a board's filter, so they would drop off
+// it without a word. The board names them above its columns, each a link to the
+// entry with the reason beside it.
+test("a board lists the entries under it whose header couldn't be read", async () => {
+  await mountAt("/wiki/index.md");
+  serveAlso({
+    "/api/board/": {
+      ...boardFixture,
+      unread: [
+        { path: "/notes/b.md", label: "B", error: headerError },
+        { path: "/notes/c.md", label: "C", error: "more than 10000 values through aliases" },
+      ],
+    },
+  });
+  await act(async () => navigateTo("/kanban/notes"));
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+
+  const notice = [...document.querySelectorAll("main [role='status']")].find((n) =>
+    n.textContent?.includes("couldn't be read"),
+  );
+  expect(notice?.textContent).toContain("Not on the board: 2 entries whose frontmatter couldn't be read.");
+  const links = [...notice!.querySelectorAll("a")].map((a) => [a.textContent, a.getAttribute("href")]);
+  expect(links).toEqual([
+    ["B", "/wiki/notes/b.md"],
+    ["C", "/wiki/notes/c.md"],
+  ]);
+  expect(notice?.textContent).toContain(headerError);
+  expect(notice?.textContent).toContain("more than 10000 values through aliases");
+  // Still a board: the columns are drawn below it.
+  expect(columnEl("todo")).toBeTruthy();
+});
+
+// An empty `unread` draws nothing.
+test("a board with every header read shows no notice", async () => {
+  await mountAt("/kanban/notes");
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(document.querySelector("main")?.textContent).not.toContain("couldn't be read");
 });
 
 // ─── States ─────────────────────────────────────────────────────────────────

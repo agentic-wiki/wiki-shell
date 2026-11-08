@@ -62,7 +62,7 @@ export function Markdown({
       const id = headings.get(lineOf(props) ?? -1)?.id;
       const Tag = `h${level}` as "h1";
       return (
-        <Tag id={id} className="group scroll-mt-16">
+        <Tag id={id || undefined} className="group scroll-mt-16">
           {children}
           {id && (
             <a

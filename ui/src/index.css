@@ -50,7 +50,7 @@
   /* State. The dark values are the reference's; the light ones are the same
      hues taken down far enough to read on paper-white. */
   --color-ok: light-dark(#1f9d5c, #3dd68c);
-  --color-warn: light-dark(#b7791f, #ffb547);
+  --color-warn: light-dark(#975a16, #ffb547);
   --color-danger: light-dark(#d63b50, #ff7a8a);
 
   /* Graph edges: a hairline that has to read over a dot grid. */

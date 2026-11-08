@@ -204,7 +204,8 @@ GET  /api/entry/{path...}     one entry: body, frontmatter, checkboxes, and reso
                               and heading-id tables, and when it last changed (its
                               `timestamp`, else the file's mtime, as `wiki` sorts)
 GET  /api/board/{id}          one board as columns of cards, in the config's order,
-                              with the frontmatter keys its folder uses
+                              with the frontmatter keys its folder uses and the
+                              entries under it whose frontmatter couldn't be read
 GET  /api/graph/{id}          one graph as nodes and edges, each edge saying which
                               way it points and whether it came from the body or a field
 GET  /api/git                 the bundle's repository: branch, upstream, ahead/behind,
@@ -236,6 +237,8 @@ A write carries the `version` it was read at, and one that has moved is refused 
 `/raw` serves what the index refers to, not what the directory contains: every entry, plus every non-entry an entry links to. A `.env` sitting beside your notes has no key there, so it cannot be requested.
 
 It is also the only way to get an entry's exact bytes. `/api/entry` returns the body with frontmatter stripped and the frontmatter parsed, and you cannot reassemble the original file from those.
+
+Frontmatter is read by the `wiki` library, so each value is what `wiki` shows: the text as YAML reads it (`'company''s'` is `company's`), and a list or map inside a value as one line of YAML (`{path: a.pdf, pages: 40}`). A page whose frontmatter isn't valid YAML, or is over one of `wiki`'s limits, has no fields. Its page says why (`frontmatterError` on `/api/entry` and on its tree entry), and a board lists it under `unread` rather than dropping it, since no column can hold it. A card move onto a header `wiki` can't edit safely is refused with `422` and the reason, and the file is left as it was.
 
 ## Relationship to `wiki`
 

@@ -153,3 +153,15 @@ test("a callout nested in a callout renders both", () => {
   expect(types).toEqual(["warning", "bug"]);
   expect(el.textContent).not.toContain("[!");
 });
+
+// A heading with no letter or digit has an empty id from wiki: it renders
+// with no id attribute and no anchor link, not as id="".
+test("a heading with an empty id gets no id attribute", () => {
+  const el = render({
+    body: "# ???\n",
+    headings: [{ level: 1, text: "???", id: "", line: 4, bodyLine: 1 }],
+  });
+  const h = el.querySelector("h1")!;
+  expect(h.hasAttribute("id")).toBe(false);
+  expect(h.querySelector("a")).toBeNull();
+});

@@ -247,6 +247,27 @@ export function BoardView({
         </div>
       </header>
 
+      {/* Entries whose header couldn't be read have no fields, so no column can
+          hold them. Without this they would drop off the board without a word. */}
+      {board.unread.length > 0 && (
+        <div role="status" className="border-line text-warn shrink-0 border-b px-5 py-1.5 text-xs">
+          <p>
+            Not on the board: {count(board.unread.length, "entry", "entries")} whose frontmatter
+            couldn&apos;t be read.
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {board.unread.map((u) => (
+              <li key={u.path}>
+                <Link to={"/wiki" + u.path} className="underline underline-offset-2">
+                  {u.label}
+                </Link>
+                : {u.error}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Columns scroll sideways as a set while each scrolls its own cards, so a
           long column does not push the board's own height around. Marked as the
           scroller so a drag towards the edge can bring the rest into reach.

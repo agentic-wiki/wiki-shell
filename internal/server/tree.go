@@ -53,6 +53,9 @@ type EntryStub struct {
 	Type  string `json:"type"`
 	Label string `json:"label"`
 	Title string `json:"title,omitempty"`
+	// FrontmatterError is why the entry's header couldn't be read, empty when
+	// it was, so a listing can mark the entry.
+	FrontmatterError string `json:"frontmatterError,omitempty"`
 	// ChangedAt is the bundle version at which this entry's content last moved.
 	// Monotonic and per entry, so a client asking "what changed since I looked"
 	// compares one number per entry instead of diffing two trees — and a client
@@ -102,14 +105,15 @@ func buildTree(v store.View) *TreeNode {
 		dir := path.Dir(e.Path)
 		node := folderFor(folders, root, dir)
 		node.Entries = append(node.Entries, EntryStub{
-			Path:      e.Path,
-			Name:      path.Base(e.Path),
-			Type:      e.Type,
-			Label:     titleFromFilename(e.Path),
-			Title:     e.Field("title"),
-			ChangedAt: v.ChangedAt[e.Path],
-			Updated:   updated(e),
-			Links:     links[e.Path],
+			Path:             e.Path,
+			Name:             path.Base(e.Path),
+			Type:             e.Type,
+			Label:            titleFromFilename(e.Path),
+			Title:            e.Field("title"),
+			FrontmatterError: frontmatterError(e),
+			ChangedAt:        v.ChangedAt[e.Path],
+			Updated:          updated(e),
+			Links:            links[e.Path],
 		})
 		if path.Base(e.Path) == "index.md" {
 			node.Index = e.Path

@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"path"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/agentic-wiki/wiki/index"
+	"github.com/agentic-wiki/wiki/parse"
 	"github.com/agentic-wiki/wikiview/internal/config"
 	"github.com/agentic-wiki/wikiview/internal/store"
 )
@@ -142,8 +144,16 @@ func (s *Server) handleCard(w http.ResponseWriter, r *http.Request) {
 		}
 		fields[board.Lane] = req.Lane
 	}
+	// A refusal (a header the library can't edit safely) is the request's
+	// problem, so 422 with the reason. Anything else, such as a file that
+	// can't be read or written, is the server's.
 	if err := e.SetFields(fields); err != nil {
-		writeJSON(w, http.StatusUnprocessableEntity, errorBody{err.Error()})
+		code := http.StatusInternalServerError
+		var refused *parse.EditError
+		if errors.As(err, &refused) {
+			code = http.StatusUnprocessableEntity
+		}
+		writeJSON(w, code, errorBody{err.Error()})
 		return
 	}
 	s.committed(w)
