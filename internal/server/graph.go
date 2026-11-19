@@ -6,9 +6,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/agentic-wiki/wiki-shell/internal/config"
+	"github.com/agentic-wiki/wiki-shell/internal/store"
 	"github.com/agentic-wiki/wiki/index"
-	"github.com/agentic-wiki/wikiview/internal/config"
-	"github.com/agentic-wiki/wikiview/internal/store"
 )
 
 // GraphView is a slice of the bundle as nodes and the links between them.

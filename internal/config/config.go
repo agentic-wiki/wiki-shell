@@ -1,4 +1,4 @@
-// Package config reads wikiview's own section of the bundle's wiki.toml.
+// Package config reads WikiShell's own section of the bundle's wiki.toml.
 //
 // Everything here is optional. A bundle with no `[tool.wikiview]` serves every
 // view correctly: the reader needs no configuration, and a board infers its
@@ -15,6 +15,10 @@ import (
 	"github.com/agentic-wiki/wiki/bundle"
 	"github.com/agentic-wiki/wiki/index"
 )
+
+// tool is this app's key under `[tool]` in wiki.toml: every table it reads
+// and writes is `[tool.wikiview]` or below it.
+const tool = "wikiview"
 
 // Board is one declared board.
 //
@@ -305,10 +309,10 @@ var decoding sync.Mutex
 func decodeTool(b *bundle.Bundle, loose *map[string]any, cfg *Config) error {
 	decoding.Lock()
 	defer decoding.Unlock()
-	if _, err := b.DecodeTool("wikiview", loose); err != nil {
+	if _, err := b.DecodeTool(tool, loose); err != nil {
 		return err
 	}
-	_, err := b.DecodeTool("wikiview", cfg)
+	_, err := b.DecodeTool(tool, cfg)
 	return err
 }
 
@@ -340,7 +344,7 @@ func unknownKeys(loose map[string]any) []string {
 	var out []string
 	for key, value := range loose {
 		if !topKeys[key] {
-			out = append(out, fmt.Sprintf("unknown key [tool.wikiview] %s", key))
+			out = append(out, fmt.Sprintf("unknown key [tool.%s] %s", tool, key))
 			continue
 		}
 		tables, _ := value.([]map[string]any)

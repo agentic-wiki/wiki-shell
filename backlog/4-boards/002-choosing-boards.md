@@ -74,7 +74,7 @@ Nothing is lost by forgetting: the board is still in the rail, and `root` still 
 
 ## Validation belongs here
 
-`wiki` never parses inside `[tool.*]` — that is the point of reserving it — so it cannot warn about a board path that does not exist or a `where` expression that does not parse. wikiview validates its own section and reports on startup.
+`wiki` never parses inside `[tool.*]` — that is the point of reserving it — so it cannot warn about a board path that does not exist or a `where` expression that does not parse. WikiShell validates its own section and reports on startup.
 
 **Acceptance:** declared boards appear in the rail under their names; making a folder a board proposes an id, checks it against the ones already taken, and appends a table to `wiki.toml` without disturbing the rest of the file; a bad path, id or filter is reported rather than silently ignored.
 

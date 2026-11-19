@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentic-wiki/wikiview/internal/store"
+	"github.com/agentic-wiki/wiki-shell/internal/store"
 )
 
 // A bundle with a declared board over /backlog, holding entries whose statuses
@@ -447,7 +447,7 @@ blockers = "waits_on"
 
 // Alphabetical is the obvious fallback and the wrong one: `high, low, medium` is
 // not a priority ordering, and nobody should have to configure their way out of
-// it. So the vocabularies wikiview recognises read the way they mean.
+// it. So the vocabularies WikiShell recognises read the way they mean.
 func TestKnownVocabulariesOrderThemselves(t *testing.T) {
 	srv := newBoardServer(t, `spec = "0.1"
 

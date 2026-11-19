@@ -321,7 +321,7 @@ function stubFetch() {
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     fetches++;
     const url = String(input);
-    const token = new Headers(init?.headers).get("X-Wikiview-Token");
+    const token = new Headers(init?.headers).get("X-Wikishell-Token");
     // The stream is driven by a test, via emitVersion and endStream, rather than
     // answered with a fixture. It is stubbed here rather than per test because
     // mountAt owns the stubbing, and a test's own would be replaced by this one.
@@ -3234,7 +3234,7 @@ test("a refused pull offers to push the work to a branch", async () => {
       JSON.stringify({
         status: { repo: true, branch: "main", remote: "origin/main", ahead: 1, behind: 2, changes: [], incoming: [] },
         error: "the pull was undone and nothing changed: CONFLICT in notes/a.md",
-        proposed: "wikiview/2026-08-12-1430",
+        proposed: "wikishell/2026-08-12-1430",
       }),
       { status: 409, headers: { "content-type": "application/json" } },
     );
@@ -3255,7 +3255,7 @@ test("a refused pull offers to push the work to a branch", async () => {
 
   expect(dialog.textContent).toContain("was undone and nothing changed");
   const branch = dialog.querySelector<HTMLInputElement>("[aria-label='Branch name']")!;
-  expect(branch.value).toBe("wikiview/2026-08-12-1430");
+  expect(branch.value).toBe("wikishell/2026-08-12-1430");
 
   const push = [...dialog.querySelectorAll("button")].find((b) =>
     b.textContent?.includes("Push to this branch"),
@@ -3344,7 +3344,7 @@ test("a rescue stays on screen, because the branch name is the point", async () 
         JSON.stringify({
           status: { repo: true, branch: "main", remote: "origin/main", ahead: 1, behind: 1, changes: [], incoming: [] },
           error: "the pull was undone and nothing changed",
-          proposed: "wikiview/2026-08-12-1430",
+          proposed: "wikishell/2026-08-12-1430",
         }),
         { status: 409, headers: { "content-type": "application/json" } },
       );
@@ -3376,7 +3376,7 @@ test("a rescue stays on screen, because the branch name is the point", async () 
 
   const still = document.querySelector("[role='dialog'][aria-label='Source control']");
   expect(Boolean(still)).toBe(true);
-  expect(still?.textContent).toContain("wikiview/2026-08-12-1430");
+  expect(still?.textContent).toContain("wikishell/2026-08-12-1430");
 });
 
 // Staged work outside the bundle is not going to be committed, which is exactly
@@ -6291,7 +6291,7 @@ test("a tab the server refuses shows the link state and nothing from the bundle"
   const text = await mountAt("/wiki/notes/a.md");
 
   // A remote reader cannot see the terminal, so the copy says who to ask.
-  expect(text).toContain("Ask the person who started wikiview for that link.");
+  expect(text).toContain("Ask the person who started WikiShell for that link.");
   expect(text).toContain("Open this wiki with its link");
   // The address it is on, as plain text: never the token and never a fragment.
   expect(text).toContain("This tab is on");
@@ -6407,7 +6407,7 @@ test("a stream that ends reconnects with the same token", async () => {
 });
 
 // A restart creates a new token, so the reconnect is refused. That is not an error
-// to retry: the way on is the link wikiview printed when it started, and the refused token
+// to retry: the way on is the link WikiShell printed when it started, and the refused token
 // is dropped rather than kept for the next attempt.
 test("a reconnect refused as unauthenticated shows the link state", async () => {
   const text = await mountAt("/wiki/notes/a.md");
@@ -6424,7 +6424,7 @@ test("a reconnect refused as unauthenticated shows the link state", async () => 
   expect(after).not.toContain("A Note");
   // The refused token is dropped, so opening the newly printed link recovers.
   expect(token()).toBeNull();
-  expect(document.title).toBe("Open this wiki with its link · wikiview");
+  expect(document.title).toBe("Open this wiki with its link · WikiShell");
 });
 
 // A 421 is the address, not the token: the server does not answer to the name in
@@ -6438,7 +6438,7 @@ test("a 421 says to use the printed address and keeps the token", async () => {
   const text = await mountAt("/wiki/notes/a.md");
 
   expect(text).toContain("Open this wiki with its link");
-  expect(text).toContain("wikiview opens this wiki only at the address it printed when it started");
+  expect(text).toContain("WikiShell opens this wiki only at the address it printed when it started");
   expect(token()).toBe("test-token");
 });
 
@@ -6452,7 +6452,7 @@ test("an exhausted retry budget shows the danger state, not the link screen", as
   await until(() => (container?.textContent ?? "").includes("Cannot reach the bundle"));
 
   const text = container!.textContent ?? "";
-  expect(text).toContain("The connection to wikiview was lost.");
+  expect(text).toContain("The connection to WikiShell was lost.");
   expect(text).not.toContain("Open this wiki with its link");
   // A server that is down is not a token problem, so the token is still held.
   expect(token()).toBe("test-token");

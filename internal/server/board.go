@@ -6,9 +6,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/agentic-wiki/wiki-shell/internal/config"
+	"github.com/agentic-wiki/wiki-shell/internal/store"
 	"github.com/agentic-wiki/wiki/index"
-	"github.com/agentic-wiki/wikiview/internal/config"
-	"github.com/agentic-wiki/wikiview/internal/store"
 )
 
 // BoardView is one folder stacked into columns.
@@ -320,7 +320,7 @@ func fieldsIn(entries []*index.Entry) []Field {
 	return out
 }
 
-// knownOrder is how the vocabularies wikiview recognises actually read.
+// knownOrder is how the vocabularies WikiShell recognises actually read.
 //
 // Keyed by field name, because the opinion only holds where the name does: a
 // board grouped by `area` has no natural order and gets none invented for it.

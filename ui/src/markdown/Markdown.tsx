@@ -81,7 +81,7 @@ export function Markdown({
     a({ href, children, node: _node, ...props }) {
       const link = href ? links.get(href) : undefined;
 
-      // A link out of the bundle is not navigable here: wikiview serves this
+      // A link out of the bundle is not navigable here: WikiShell serves this
       // bundle and nothing above it. Rendered as marked text rather than as an
       // anchor, because an anchor with a relative href resolves against the
       // current route and a click becomes a full page load into a 404.

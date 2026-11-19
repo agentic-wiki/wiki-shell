@@ -14,7 +14,7 @@ A callout is a blockquote whose first line is a type marker:
 > The write went through and the version moved.
 ```
 
-The reader renders that as an ordinary blockquote with `[!success]` sitting at the top as literal text. Nothing is lost, but the one thing the author was reaching for — *this passage is a warning, that one is a result* — is the part that does not survive. Callouts are how agents and people mark the asides in these bundles, and wikiview's own README already writes one.
+The reader renders that as an ordinary blockquote with `[!success]` sitting at the top as literal text. Nothing is lost, but the one thing the author was reaching for — *this passage is a warning, that one is a result* — is the part that does not survive. Callouts are how agents and people mark the asides in these bundles, and WikiShell's own README already writes one.
 
 Nothing about this involves the engine. Links, headings and checkboxes come from the server because a client that re-derived them would disagree with what gets written; a callout is presentation over text the parser already hands us, so it is a client change and only a client change: no API field, no index, no server.
 
@@ -51,7 +51,7 @@ Doing it in the component alone is the other option and is worse: the marker wou
 `remarkCallout` in `ui/src/markdown/callout.ts`, ~30 lines and no dependency: it mutates the first text node of a quote that opens with a marker and leaves `data-callout` and `data-callout-label` behind. `Markdown.tsx` renders the label; `index.css` colours by type.
 
 > [!success] Which is this block
-> The three lines at the top of this entry are fenced, so they stay source. These are not: read in wikiview, this is the feature looking at itself, and read anywhere else it is an ordinary quote that says `[!success] Which is this block` first. Both are fine, which is the point of building it on a blockquote.
+> The three lines at the top of this entry are fenced, so they stay source. These are not: read in WikiShell, this is the feature looking at itself, and read anywhere else it is an ordinary quote that says `[!success] Which is this block` first. Both are fine, which is the point of building it on a blockquote.
 
 **No icons.** The task said icon, label and body, and the icon is the part that does not survive the open set: an icon per type is a table that has to grow every time somebody invents a marker, which is the thing this deliberately does not have. Colour and a label carry it, and an unlisted word gets the same treatment as a listed one.
 

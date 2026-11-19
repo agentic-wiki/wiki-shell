@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agentic-wiki/wikiview/internal/store"
+	"github.com/agentic-wiki/wiki-shell/internal/store"
 )
 
 // SSE is tested over a real server and client rather than an httptest.Recorder:

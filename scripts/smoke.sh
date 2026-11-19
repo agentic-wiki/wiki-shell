@@ -7,10 +7,10 @@
 # SPA fallback that makes a deep URL survive a cold load, and the fence that
 # stands in front of all of it.
 #
-# Usage: scripts/smoke.sh ./bin/wikiview
+# Usage: scripts/smoke.sh ./bin/wikishell
 set -euo pipefail
 
-BIN="${1:?usage: smoke.sh <path-to-wikiview>}"
+BIN="${1:?usage: smoke.sh <path-to-wikishell>}"
 BIN="$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN")"
 PORT="${PORT:-8791}"
 BASE="http://localhost:${PORT}"
@@ -53,7 +53,7 @@ grep -q "open http://localhost:${PORT}/\$" "$log" || fail "the loopback address 
 # Every API call carries the header, the way the app's do. On localhost any
 # value is accepted; the app sends `local` when it holds no token.
 TOKEN=local
-api() { curl -sf -H "X-Wikiview-Token: ${TOKEN}" "$@"; }
+api() { curl -sf -H "X-Wikishell-Token: ${TOKEN}" "$@"; }
 
 check() { # check <description> <pattern> <url>
     echo "--- $1 ---"
@@ -65,7 +65,7 @@ echo "--- the header is the only way in, and the Host is checked first ---"
     fail "a read without the header was not refused"
 [[ "$(curl -s -o /dev/null -w '%{http_code}' -X POST "${BASE}/api/refresh" -d '{}')" == "401" ]] ||
     fail "a write without the header was not refused"
-[[ "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: evil.example' -H "X-Wikiview-Token: ${TOKEN}" "${BASE}/api/bundle")" == "421" ]] ||
+[[ "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: evil.example' -H "X-Wikishell-Token: ${TOKEN}" "${BASE}/api/bundle")" == "421" ]] ||
     fail "a foreign Host was not refused"
 [[ "$(curl -s -o /dev/null -w '%{http_code}' "${BASE}/")" == "200" ]] ||
     fail "the shell was not served without a token"
@@ -105,7 +105,7 @@ grep -q -- '- \[x\] first' "$bundle/notes/a.md" || fail "the checkbox was not wr
 
 echo "--- a stale version is refused, and nothing changes ---"
 code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT "${BASE}/api/checkbox/notes/a.md" \
-    -H "X-Wikiview-Token: ${TOKEN}" \
+    -H "X-Wikishell-Token: ${TOKEN}" \
     -d "{\"line\":${line},\"done\":false,\"version\":${version}}")
 [[ "$code" == "409" ]] || fail "expected 409 for a stale version, got $code"
 grep -q -- '- \[x\] first' "$bundle/notes/a.md" || fail "a refused write changed the file"
@@ -134,22 +134,22 @@ LINK=$(grep -o "open http://[^ ]*" "$netlog" | head -1 | cut -d" " -f2)
 NETTOKEN=${LINK##*#t=}
 [[ ${#NETTOKEN} == 64 ]] || fail "the network bind printed no token link: $(cat "$netlog")"
 net() { curl -s -o /dev/null -w '%{http_code}' "$@" "http://127.0.0.1:${NETPORT}/api/bundle"; }
-[[ "$(net -H "X-Wikiview-Token: ${NETTOKEN}")" == "200" ]] || fail "the printed token was refused"
-[[ "$(net -H "X-Wikiview-Token: local")" == "401" ]] || fail "a wrong token was accepted"
+[[ "$(net -H "X-Wikishell-Token: ${NETTOKEN}")" == "200" ]] || fail "the printed token was refused"
+[[ "$(net -H "X-Wikishell-Token: local")" == "401" ]] || fail "a wrong token was accepted"
 [[ "$(net)" == "401" ]] || fail "a missing token was accepted"
 # No Host check here: the machine is reached by its IP or its name.
-[[ "$(net -H 'Host: wiki.lan' -H "X-Wikiview-Token: ${NETTOKEN}")" == "200" ]] ||
+[[ "$(net -H 'Host: wiki.lan' -H "X-Wikishell-Token: ${NETTOKEN}")" == "200" ]] ||
     fail "a network name was refused"
 # /raw needs the cookie an /api call sets, the way the browser carries it.
 netraw="http://127.0.0.1:${NETPORT}/raw/notes/diagram.png"
 [[ "$(curl -s -o /dev/null -w '%{http_code}' "$netraw")" == "401" ]] ||
     fail "a network /raw was served without the cookie"
-curl -sf -o /dev/null -c "$jar" -H "X-Wikiview-Token: ${NETTOKEN}" "http://127.0.0.1:${NETPORT}/api/bundle"
+curl -sf -o /dev/null -c "$jar" -H "X-Wikishell-Token: ${NETTOKEN}" "http://127.0.0.1:${NETPORT}/api/bundle"
 [[ "$(curl -s -o /dev/null -w '%{http_code}' -b "$jar" "$netraw")" == "200" ]] ||
     fail "a network /raw was refused with the cookie"
 
 echo "--- traversal names nothing ---"
-curl -s -o /dev/null -w '%{http_code}\n' -H "X-Wikiview-Token: ${TOKEN}" \
+curl -s -o /dev/null -w '%{http_code}\n' -H "X-Wikishell-Token: ${TOKEN}" \
     "${BASE}/api/entry/%2e%2e%2f%2e%2e%2fetc%2fpasswd" | grep -q 404 ||
     fail "a traversal attempt did not 404"
 

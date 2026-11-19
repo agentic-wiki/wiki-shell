@@ -282,7 +282,7 @@ func TestBranchPushesTheLocalWorkSomewhereSafe(t *testing.T) {
 	must(t, clone, "commit", "--quiet", "--message", "mine")
 
 	name := ProposedBranch(time.Date(2026, 8, 12, 14, 30, 0, 0, time.UTC))
-	if name != "wikiview/2026-08-12-1430" {
+	if name != "wikishell/2026-08-12-1430" {
 		t.Fatalf("proposed %q", name)
 	}
 	if _, err := Branch(context.Background(), clone, name); err != nil {

@@ -11,7 +11,7 @@
  * address bar, so a screenshot or a bookmark cannot carry it.
  *
  * The token's wire form is 32 random bytes as 64 lowercase hex characters, sent
- * exactly as printed in the one place it travels, the `X-Wikiview-Token` header.
+ * exactly as printed in the one place it travels, the `X-Wikishell-Token` header.
  * This file neither decodes nor normalises it.
  *
  * A module rather than React state: `api.ts` reads it on every request and
@@ -21,7 +21,7 @@
 
 /** Where this tab's copy lives. `sessionStorage`, not `localStorage`: a token
  *  belongs to the window that was opened with it, not to every later window. */
-const KEY = "wikiview.token";
+const KEY = "wikishell.token";
 
 /** The fragment's key when the URL carries a token: `#t=…`. The server prints
  *  the URL, so this name is a contract with it, not a local choice. */

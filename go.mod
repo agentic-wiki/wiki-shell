@@ -1,4 +1,4 @@
-module github.com/agentic-wiki/wikiview
+module github.com/agentic-wiki/wiki-shell
 
 go 1.24
 

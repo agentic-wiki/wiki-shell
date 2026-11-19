@@ -10,8 +10,8 @@ import { splitSheetPath } from "@/views/CardSheet";
  * A single-page app has to do this by hand, and it is not cosmetic: the title is
  * the tab, the window in an alt-tab list, the name a bookmark takes, the history
  * entry a back-button menu shows, and the header a browser prints at the top of
- * the page. All of those said "wikiview" for every entry in every bundle, which
- * is the same answer to five different questions.
+ * the page. One fixed title for every entry in every bundle would give the same
+ * answer to five different questions.
  *
  * One rule: what you are looking at, then which bundle it is in. The bundle name
  * is the suffix rather than a view name like "Wiki" or "Kanban" — somebody with

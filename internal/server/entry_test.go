@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentic-wiki/wikiview/internal/store"
+	"github.com/agentic-wiki/wiki-shell/internal/store"
 )
 
 // One representation of the content, plus lookup tables. The body is the

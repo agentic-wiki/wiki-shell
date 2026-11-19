@@ -188,7 +188,7 @@ function Axis({
     <div className="space-y-2">
       {values.length === 0 ? (
         <p className="text-muted px-1 py-1 text-xs">
-          Nothing pinned, so the order is the one wikiview infers.
+          Nothing pinned, so the order is the one WikiShell infers.
         </p>
       ) : (
         <ul aria-label={`Pinned ${label}s`} className="border-line max-h-56 overflow-y-auto rounded-[10px] border">

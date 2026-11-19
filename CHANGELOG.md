@@ -1,6 +1,13 @@
 # Changelog
 
-All notable changes to `wikiview` are documented here. This project follows [semantic versioning](https://semver.org); while pre-1.0, breaking changes bump the minor version.
+All notable changes to WikiShell are documented here. This project follows [semantic versioning](https://semver.org); while pre-1.0, breaking changes bump the minor version.
+
+## v0.18.0
+
+### Breaking
+
+- **wikiview is now WikiShell.** The command is `wikishell`, installed with `brew install agentic-wiki/tap/wikishell`. On `brew upgrade`, an installed `wikiview` moves to `wikishell` by itself. Scripts that call the API send `X-Wikishell-Token` instead of `X-Wikiview-Token`. The config in `wiki.toml` is unchanged, under `[tool.wikiview]`.
+- **A pull or sync that can't finish now offers a branch named `wikishell/<date>`** for your local work, instead of `wikiview/<date>`.
 
 ## v0.17.0
 

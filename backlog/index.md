@@ -2,9 +2,9 @@
 okf_version: "0.1"
 ---
 
-# wikiview
+# WikiShell
 
-Backlog for [wikiview](../README.md), kept as an agentic-wiki bundle and operated with `wiki`.
+Backlog for [WikiShell](../README.md), kept as an agentic-wiki bundle and operated with `wiki`.
 
 **Goal:** a web UI over a bundle that reads like a wiki, boards like a kanban, and never becomes a markdown editor.
 

@@ -40,7 +40,7 @@ test("a read and a write carry the token in a header, cache nothing, and never i
     async (url, init) => {
       sent.push({
         url,
-        token: new Headers(init?.headers).get("X-Wikiview-Token"),
+        token: new Headers(init?.headers).get("X-Wikishell-Token"),
         cache: init?.cache,
       });
       return json({});
@@ -61,7 +61,7 @@ test("with no token the header says `local`, which a localhost server accepts", 
   const sent: (string | null)[] = [];
   await withFetch(
     async (_url, init) => {
-      sent.push(new Headers(init?.headers).get("X-Wikiview-Token"));
+      sent.push(new Headers(init?.headers).get("X-Wikishell-Token"));
       return json({});
     },
     async () => {

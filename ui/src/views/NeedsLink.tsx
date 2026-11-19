@@ -7,7 +7,7 @@ const TITLE = "Open this wiki with its link";
  * What a tab with no working token shows.
  *
  * Only a server on a network address asks for a token, so the reader is often
- * on another machine and someone else may have started wikiview: the copy says
+ * on another machine and someone else may have started WikiShell: the copy says
  * who to ask rather than pointing at a terminal they cannot see. Not an error:
  * nothing failed, this window simply has no link the server would open for it.
  * A tab opened without one, and a tab left open across a restart (which creates
@@ -29,7 +29,7 @@ export function NeedsLink({ reason }: { reason: "token" | "host" }) {
   // The tab would otherwise keep naming the entry it was showing when the
   // stream died, which is no longer what is on screen.
   useEffect(() => {
-    document.title = `${TITLE} · wikiview`;
+    document.title = `${TITLE} · WikiShell`;
   }, []);
 
   return (
@@ -44,13 +44,13 @@ export function NeedsLink({ reason }: { reason: "token" | "host" }) {
         <>
           {reason === "host" ? (
             <>
-              wikiview opens this wiki only at the address it printed when it started, and this
+              WikiShell opens this wiki only at the address it printed when it started, and this
               tab is on a different one. Open that address exactly as printed.
             </>
           ) : (
             <>
-              wikiview opens this wiki only with the link it printed when it started, and this tab
-              has no working one. Ask the person who started wikiview for that link. After a
+              WikiShell opens this wiki only with the link it printed when it started, and this tab
+              has no working one. Ask the person who started WikiShell for that link. After a
               restart, there is a new one.
             </>
           )}

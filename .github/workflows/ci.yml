@@ -49,18 +49,18 @@ jobs:
         run: go test -race ./...
 
       - name: Build
-        run: go build -ldflags "-s -w" -o bin/wikiview ./cmd/wikiview
+        run: go build -ldflags "-s -w" -o bin/wikishell ./cmd/wikishell
 
       - name: Serves a bundle
-        run: bash scripts/smoke.sh ./bin/wikiview
+        run: bash scripts/smoke.sh ./bin/wikishell
 
       - name: Cross-compile check
         run: |
-          GOOS=darwin  GOARCH=arm64 go build -o /dev/null ./cmd/wikiview
-          GOOS=darwin  GOARCH=amd64 go build -o /dev/null ./cmd/wikiview
-          GOOS=linux   GOARCH=arm64 go build -o /dev/null ./cmd/wikiview
-          GOOS=windows GOARCH=amd64 go build -o /dev/null ./cmd/wikiview
-          GOOS=windows GOARCH=arm64 go build -o /dev/null ./cmd/wikiview
+          GOOS=darwin  GOARCH=arm64 go build -o /dev/null ./cmd/wikishell
+          GOOS=darwin  GOARCH=amd64 go build -o /dev/null ./cmd/wikishell
+          GOOS=linux   GOARCH=arm64 go build -o /dev/null ./cmd/wikishell
+          GOOS=windows GOARCH=amd64 go build -o /dev/null ./cmd/wikishell
+          GOOS=windows GOARCH=arm64 go build -o /dev/null ./cmd/wikishell
 
   # Native Windows gate. The watcher and the atomic writes it observes behave
   # differently there — a replace cannot happen while a file is open — so the Go
@@ -92,4 +92,4 @@ jobs:
         run: go test -race ./...
 
       - name: Build
-        run: go build -ldflags "-s -w" -o bin/wikiview.exe ./cmd/wikiview
+        run: go build -ldflags "-s -w" -o bin/wikishell.exe ./cmd/wikishell

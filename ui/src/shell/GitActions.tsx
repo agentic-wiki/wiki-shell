@@ -11,7 +11,7 @@ import { useToast } from "@/ui/Toast";
  * Refresh, and the repository: a pill that says where the branch stands and a
  * popover that pulls and pushes (backlog/8-design/005).
  *
- * Pull and sync are the first things wikiview does that reach outside the
+ * Pull and sync are the first things WikiShell does that reach outside the
  * machine and the first that are hard to take back, so they are shaped
  * accordingly: each tab shows what its button will do, and nothing happens until
  * it is pressed.

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/agentic-wiki/wikiview/internal/store"
+	"github.com/agentic-wiki/wiki-shell/internal/store"
 )
 
 // broker fans a version number out to connected clients.

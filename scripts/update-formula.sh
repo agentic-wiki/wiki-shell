@@ -15,9 +15,9 @@
 #                       prints the formula and exits without pushing)
 set -euo pipefail
 
-REPO="agentic-wiki/wikiview"
+REPO="agentic-wiki/wiki-shell"
 TAP_REPO="agentic-wiki/homebrew-tap"
-FORMULA="wikiview"
+FORMULA="wikishell"
 CHECKSUMS="dist/checksums.txt"
 
 : "${VERSION:?set VERSION to the release tag, e.g. v0.3.0}"
@@ -47,7 +47,7 @@ linux_amd="${FORMULA}_linux_amd64.tar.gz"
 
 formula=$(
     cat <<EOF
-class Wikiview < Formula
+class Wikishell < Formula
   desc "Read and board agentic-wiki bundles in a browser"
   homepage "https://github.com/${REPO}"
   version "${version}"
@@ -75,11 +75,11 @@ class Wikiview < Formula
   end
 
   def install
-    bin.install "wikiview"
+    bin.install "wikishell"
   end
 
   test do
-    assert_match version.to_s, shell_output("#{bin}/wikiview version")
+    assert_match version.to_s, shell_output("#{bin}/wikishell version")
   end
 end
 EOF

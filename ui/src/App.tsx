@@ -23,7 +23,7 @@ import { ToastProvider, useToast } from "@/ui/Toast";
 
 /** What the error state says when the change stream gave up, as opposed to a
  *  load that failed. */
-const CONNECTION_LOST = "The connection to wikiview was lost.";
+const CONNECTION_LOST = "The connection to WikiShell was lost.";
 
 export function App() {
   // What stopped this tab reading the bundle, or null when nothing did. Every

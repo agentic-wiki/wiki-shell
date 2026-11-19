@@ -1,6 +1,6 @@
 version: 2
 
-project_name: wikiview
+project_name: wikishell
 
 # The binary embeds ui/dist, so the frontend must be built before Go compiles.
 # Without this the release would ship whatever happened to be in the working
@@ -18,8 +18,8 @@ before:
         - sh -c "cd ui && bunx vite build"
 
 builds:
-    - main: ./cmd/wikiview
-      binary: wikiview
+    - main: ./cmd/wikishell
+      binary: wikishell
       ldflags:
           - -s -w -X main.Version={{.Version}}
       goos:

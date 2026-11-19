@@ -1,4 +1,4 @@
-# wikiview — development workflow
+# WikiShell — development workflow
 
 # Default: show available recipes
 default:
@@ -69,12 +69,12 @@ ui-build: ui-install
 # Build the binary with the frontend embedded
 [group('build')]
 build: ui-build
-    go build -o bin/wikiview ./cmd/wikiview
+    go build -o bin/wikishell ./cmd/wikishell
 
 # End-to-end: run the real binary against a real bundle over HTTP
 [group('test')]
 smoke: build
-    bash scripts/smoke.sh ./bin/wikiview
+    bash scripts/smoke.sh ./bin/wikishell
 
 # Everything: unit, UI, and end-to-end
 [group('test')]
@@ -87,7 +87,7 @@ cross-compile: ui-build
     set -euo pipefail
     for target in darwin/arm64 darwin/amd64 linux/arm64 linux/amd64 windows/amd64 windows/arm64; do
         echo "  $target"
-        GOOS=${target%/*} GOARCH=${target#*/} go build -o /dev/null ./cmd/wikiview
+        GOOS=${target%/*} GOARCH=${target#*/} go build -o /dev/null ./cmd/wikishell
     done
 
 # Build a release locally without publishing, and print the Homebrew formula
@@ -111,7 +111,7 @@ ui-check:
 ui-test: ui-install
     cd ui && bun test
 
-# The frontend dev server, proxying /api to a running wikiview
+# The frontend dev server, proxying /api to a running WikiShell
 [group('run')]
 ui-dev: ui-install
     cd ui && bunx vite
@@ -122,4 +122,4 @@ ui-dev: ui-install
 # change is invisible here no matter how many times the page is reloaded.
 [group('run')]
 serve root="./backlog" host="localhost" port="8080": ui-build
-    go run ./cmd/wikiview {{root}} --host {{host}} --port {{port}}
+    go run ./cmd/wikishell {{root}} --host {{host}} --port {{port}}

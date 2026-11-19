@@ -555,7 +555,7 @@ func TestLinkHostNamesTheMachineForAnUnspecifiedBind(t *testing.T) {
 	}
 }
 
-// On a network bind `/raw` needs the `wikiview_raw_<port>` cookie, which an
+// On a network bind `/raw` needs the `wikishell_raw_<port>` cookie, which an
 // `/api` response that passed the token check sets: an `<img src>` cannot send
 // the header, but the browser sends the cookie. Its value is a separate secret,
 // never the token, because cookies reach every service on the host; and `/api`
@@ -593,9 +593,9 @@ func TestOnTheNetworkRawNeedsTheCookie(t *testing.T) {
 		t.Fatalf("an /api call that passed set %d cookies, want 1", len(cookies))
 	}
 	set := cookies[0]
-	// Named per port, so two wikiviews on one host never overwrite each other.
-	if set.Name != "wikiview_raw_8080" {
-		t.Errorf("cookie name %q, want wikiview_raw_8080", set.Name)
+	// Named per port, so two WikiShells on one host never overwrite each other.
+	if set.Name != "wikishell_raw_8080" {
+		t.Errorf("cookie name %q, want wikishell_raw_8080", set.Name)
 	}
 	if set.Path != "/raw" || !set.HttpOnly || set.SameSite != http.SameSiteStrictMode {
 		t.Errorf("cookie %+v, want Path=/raw, HttpOnly, SameSite=Strict", set)
@@ -632,8 +632,8 @@ func TestOnTheNetworkRawNeedsTheCookie(t *testing.T) {
 // The 401 says what this mode needs.
 func TestTheRefusalSaysWhatTheModeNeeds(t *testing.T) {
 	for mode, want := range map[string]string{
-		"loopback": "send the X-Wikiview-Token header (any value)",
-		"network":  "this needs the token from the link wikiview printed",
+		"loopback": "send the X-Wikishell-Token header (any value)",
+		"network":  "this needs the token from the link WikiShell printed",
 	} {
 		srv := bothModes(t)[mode]
 		rec := serve(srv, unauthenticated(srv, http.MethodGet, "/api/bundle", nil))

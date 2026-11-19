@@ -7,7 +7,7 @@ tags: [feature, reader, write]
 blockers: [/3-reader/004-ui-shell.md]
 ---
 
-The reader itself, and the first thing in wikiview that writes.
+The reader itself, and the first thing in WikiShell that writes.
 
 ## Rendering
 

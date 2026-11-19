@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentic-wiki/wikiview/internal/git"
-	"github.com/agentic-wiki/wikiview/internal/store"
+	"github.com/agentic-wiki/wiki-shell/internal/git"
+	"github.com/agentic-wiki/wiki-shell/internal/store"
 )
 
 // A bundle that is also a clone, which is the shape the actions assume.
@@ -159,7 +159,7 @@ func TestAFailedPullAnswersWithTheWayOut(t *testing.T) {
 	if !strings.Contains(body.Error, "undone") {
 		t.Errorf("error does not say the pull was undone: %q", body.Error)
 	}
-	if !strings.HasPrefix(body.Proposed, "wikiview/") {
+	if !strings.HasPrefix(body.Proposed, "wikishell/") {
 		t.Errorf("no branch was proposed: %q", body.Proposed)
 	}
 	// The local work is intact and the tree is not mid-rebase.

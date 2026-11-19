@@ -12,7 +12,7 @@ Config is **entirely optional**. A stock bundle serves with no configuration at 
 
 `[tool.wikiview]` inside `wiki.toml`, depending on the upstream `[tool.*]` namespace (`wiki` backlog, *reserve a per-tool config namespace in wiki.toml*). Named rather than linked: a relative link out of this bundle would assume a sibling checkout, and `check` is right to flag it.
 
-The alternative is a `wikiview.toml` beside the bundle: two files describing one directory, read by two parsers. What settles it is that the alternative is not *one* extra file, it is one per tool, forever. `pyproject.toml` is the precedent and it works.
+The alternative is a `wikishell.toml` beside the bundle: two files describing one directory, read by two parsers. What settles it is that the alternative is not *one* extra file, it is one per tool, forever. `pyproject.toml` is the precedent and it works.
 
 **Never a second parser.** `bundle.Bundle` hands the tables over; a TOML reader here would be another rule with two homes.
 
@@ -51,11 +51,11 @@ This is what keeps `columns` an ordering aid rather than a filter. Filtering is 
 
 Resolved from the earlier open question, which asked whether `wiki check` should warn when a declared board path does not exist. It cannot, and should not: the whole point of `[tool.*]` is that `wiki` never parses or validates what is inside it. The moment it validated one tool's keys it would hold an opinion about that tool.
 
-So **wikiview validates its own section** and reports on startup: an unknown key under `[tool.wikiview]`, a `board.path` that does not exist, a `where` expression that does not parse. Same footgun class as an unknown `wiki.toml` key, handled by the tool that understands the keys.
+So **WikiShell validates its own section** and reports on startup: an unknown key under `[tool.wikiview]`, a `board.path` that does not exist, a `where` expression that does not parse. Same footgun class as an unknown `wiki.toml` key, handled by the tool that understands the keys.
 
 **Unblocked.** The upstream `[tool.*]` namespace shipped in `wiki` v0.9.0, read through `bundle.DecodeTool`. This bundle's own `wiki.toml` already declares a board with it and `wiki check` stays silent, so the shape above is exercised rather than only proposed. What remains here is code that reads it: the API reports which tool tables exist, but nothing decodes the board yet.
 
-**Acceptance:** a bundle with no `[tool.wikiview]` serves every view correctly; a declared board pins its column order and surfaces in navigation; an entry whose status is undeclared still appears; wikiview reports its own config errors and `wiki check` stays silent about the namespace.
+**Acceptance:** a bundle with no `[tool.wikiview]` serves every view correctly; a declared board pins its column order and surfaces in navigation; an entry whose status is undeclared still appears; WikiShell reports its own config errors and `wiki check` stays silent about the namespace.
 
 ## Done
 

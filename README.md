@@ -1,20 +1,20 @@
-# wikiview
+# WikiShell
 
-[![Release](https://img.shields.io/github/v/release/agentic-wiki/wikiview?sort=semver)](https://github.com/agentic-wiki/wikiview/releases)
-[![Homebrew](https://img.shields.io/badge/brew-agentic--wiki%2Ftap%2Fwikiview-FBB040?logo=homebrew&logoColor=white)](https://github.com/agentic-wiki/homebrew-tap)
-[![CI](https://github.com/agentic-wiki/wikiview/actions/workflows/ci.yml/badge.svg)](https://github.com/agentic-wiki/wikiview/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/agentic-wiki/wiki-shell?sort=semver)](https://github.com/agentic-wiki/wiki-shell/releases)
+[![Homebrew](https://img.shields.io/badge/brew-agentic--wiki%2Ftap%2Fwikishell-FBB040?logo=homebrew&logoColor=white)](https://github.com/agentic-wiki/homebrew-tap)
+[![CI](https://github.com/agentic-wiki/wiki-shell/actions/workflows/ci.yml/badge.svg)](https://github.com/agentic-wiki/wiki-shell/actions/workflows/ci.yml)
 
 > A web UI for [agentic-wiki](https://github.com/agentic-wiki/wiki) bundles.
 
-A wiki bundle is a folder of Markdown that an agent maintains and the `wiki` CLI queries like a database. wikiview is the screen for it: point it at the folder, read it in a browser, follow the links, tick the checkboxes, and see the same entries as boards and graphs.
+A wiki bundle is a folder of Markdown that an agent maintains and the `wiki` CLI queries like a database. WikiShell is the screen for it: point it at the folder, read it in a browser, follow the links, tick the checkboxes, and see the same entries as boards and graphs.
 
 ![A board of tasks, one of them open in the side panel](img/2-kanban.png)
 
 One binary with the frontend built into it. Your files stay ordinary Markdown.
 
 ```sh
-brew install agentic-wiki/tap/wikiview
-cd my-kb && wikiview      # Open http://localhost:8080
+brew install agentic-wiki/tap/wikishell
+cd my-kb && wikishell      # Open http://localhost:8080
 ```
 
 ## Install
@@ -22,22 +22,22 @@ cd my-kb && wikiview      # Open http://localhost:8080
 Homebrew, on macOS or Linux:
 
 ```sh
-brew install agentic-wiki/tap/wikiview
+brew install agentic-wiki/tap/wikishell
 ```
 
 Or grab a binary directly:
 
 ```sh
 # macOS
-curl -L https://github.com/agentic-wiki/wikiview/releases/latest/download/wikiview_darwin_arm64.tar.gz | tar xz
-sudo mv wikiview /usr/local/bin/
+curl -L https://github.com/agentic-wiki/wiki-shell/releases/latest/download/wikishell_darwin_arm64.tar.gz | tar xz
+sudo mv wikishell /usr/local/bin/
 
 # Linux or WSL (amd64)
-curl -L https://github.com/agentic-wiki/wikiview/releases/latest/download/wikiview_linux_amd64.tar.gz | tar xz
-sudo mv wikiview /usr/local/bin/
+curl -L https://github.com/agentic-wiki/wiki-shell/releases/latest/download/wikishell_linux_amd64.tar.gz | tar xz
+sudo mv wikishell /usr/local/bin/
 ```
 
-Other platforms (linux/arm64 for a Raspberry Pi, darwin/amd64, windows/amd64, windows/arm64) are on the [releases page](https://github.com/agentic-wiki/wikiview/releases).
+Other platforms (linux/arm64 for a Raspberry Pi, darwin/amd64, windows/amd64, windows/arm64) are on the [releases page](https://github.com/agentic-wiki/wiki-shell/releases).
 
 > [!WARNING]
 > **Do not use `go install`.** It produces a binary without the UI in it. The
@@ -47,15 +47,15 @@ Other platforms (linux/arm64 for a Raspberry Pi, darwin/amd64, windows/amd64, wi
 From source, with [bun](https://bun.sh) and a Go toolchain:
 
 ```sh
-git clone https://github.com/agentic-wiki/wikiview && cd wikiview
+git clone https://github.com/agentic-wiki/wiki-shell && cd wiki-shell
 just build          # builds the frontend, then embeds it in the binary
-./bin/wikiview ../backlog
+./bin/wikishell ../backlog
 ```
 
 ## Running it
 
 ```sh
-wikiview [path] [flags]
+wikishell [path] [flags]
 ```
 
 The path defaults to the working directory and walks up looking for `wiki.toml`, so running it inside a bundle needs no arguments. Flags may come before or after the path.
@@ -67,12 +67,12 @@ The path defaults to the working directory and walks up looking for `wiki.toml`,
 | `--version` | | print the version and exit |
 
 ```sh
-wikiview my-kb --port 3000
+wikishell my-kb --port 3000
 ```
 
-**On localhost, open the address it prints.** Nothing else is needed, and a bookmark keeps working. Behind the scenes, every `/api` call carries an `X-Wikiview-Token` header with any value. A web page on another site cannot add that header, so it cannot write to your wiki through localhost. On a shared machine, every user of it can open your wiki.
+**On localhost, open the address it prints.** Nothing else is needed, and a bookmark keeps working. Behind the scenes, every `/api` call carries an `X-Wikishell-Token` header with any value. A web page on another site cannot add that header, so it cannot write to your wiki through localhost. On a shared machine, every user of it can open your wiki.
 
-**On a network address, open the link it prints.** With `--host 0.0.0.0` or another non-loopback address, wikiview creates a token at every start and prints it in the link: `http://<this machine>:8080/#t=…`. With `0.0.0.0`, the link names the machine by its hostname. If another machine cannot resolve that name, use this machine's IP in its place. Open the link once: the app keeps the token for that tab and takes it out of the address bar. A tab without it says what to do and shows no entry. The token lasts until the process exits, and a restart prints a new one.
+**On a network address, open the link it prints.** With `--host 0.0.0.0` or another non-loopback address, WikiShell creates a token at every start and prints it in the link: `http://<this machine>:8080/#t=…`. With `0.0.0.0`, the link names the machine by its hostname. If another machine cannot resolve that name, use this machine's IP in its place. Open the link once: the app keeps the token for that tab and takes it out of the address bar. A tab without it says what to do and shows no entry. The token lasts until the process exits, and a restart prints a new one.
 
 There is no TLS, so the token and every page cross the network in clear text. Use a network address only on a network you trust.
 
@@ -163,7 +163,7 @@ where = ["type=task", "kind=bug"]
 
 An id is a word, never a path: it is the first segment of a board's address, and everything after it is an entry, so `/kanban/backlog/3-reader/006-x.md` opens that card on that board. Ids are declared rather than derived, because a derived one would come from the path and then that first segment would sometimes be an id and sometimes a folder name.
 
-**Order comes from the vocabulary first, and from you when you say so.** `status` and `priority` read the way they mean without being configured: `todo, in-progress, done` rather than alphabetical, and `high, medium, low` rather than `high, low, medium`. `severity` and `size` too. A field wikiview does not recognise falls back to alphabetical, and `columns` or `lanes` replaces the order outright for any field at all. A value nothing in the table mentions still appears, after the ones that do.
+**Order comes from the vocabulary first, and from you when you say so.** `status` and `priority` read the way they mean without being configured: `todo, in-progress, done` rather than alphabetical, and `high, medium, low` rather than `high, low, medium`. `severity` and `size` too. A field WikiShell does not recognise falls back to alphabetical, and `columns` or `lanes` replaces the order outright for any field at all. A value nothing in the table mentions still appears, after the ones that do.
 
 **`columns` orders and adds. It never hides.** A status present in your entries but missing from the list still gets a column, appended after the ones you named. Declaring `["todo", "in-progress", "done"]` pins that order and shows `in-progress` while it is still empty, which is the thing inference cannot do for you — but a card whose status you forgot to list appears anyway rather than vanishing off a board while sitting in the folder. Hiding cards is `where`'s job, where it is explicit.
 
@@ -189,10 +189,10 @@ Drag a node and its neighbours follow; point at one to light up what it touches,
 
 ## HTTP API
 
-Useful for scripting against a running server. One rule: every `/api` request carries `X-Wikiview-Token`. If the server has a token (network bind), the value must equal it. So on localhost any value works, and on a network address you copy the token from the printed link (the fragment is never sent to the server, so the link itself cannot be used here). On a network address, `/raw` needs the `wikiview_raw_<port>` cookie that every accepted `/api` response sets; the browser does this for you.
+Useful for scripting against a running server. One rule: every `/api` request carries `X-Wikishell-Token`. If the server has a token (network bind), the value must equal it. So on localhost any value works, and on a network address you copy the token from the printed link (the fragment is never sent to the server, so the link itself cannot be used here). On a network address, `/raw` needs the `wikishell_raw_<port>` cookie that every accepted `/api` response sets; the browser does this for you.
 
 ```sh
-curl -H "X-Wikiview-Token: local" http://localhost:8080/api/bundle
+curl -H "X-Wikishell-Token: local" http://localhost:8080/api/bundle
 ```
 
 ```
@@ -242,7 +242,7 @@ Frontmatter is read by the `wiki` library, so each value is what `wiki` shows: t
 
 ## Relationship to `wiki`
 
-`wiki` is the engine and stays one: a static binary with a single dependency, a neutral index over a folder. wikiview imports its packages rather than shelling out to the CLI, so a rule like link resolution has exactly one implementation and it lives in the engine.
+`wiki` is the engine and stays one: a static binary with a single dependency, a neutral index over a folder. WikiShell imports its packages rather than shelling out to the CLI, so a rule like link resolution has exactly one implementation and it lives in the engine.
 
 Install `wiki` too for the terminal side of the same folder: querying, refactoring, `check`, and the skills an agent drives it with.
 
@@ -252,5 +252,5 @@ Install `wiki` too for the terminal side of the same folder: querying, refactori
 just serve      # build the frontend and serve this repo's own backlog
 just check      # vet, lint and tests, Go and UI
 just test-all   # unit, UI, and end-to-end
-just ui-dev     # the Vite dev server, proxying /api to a running wikiview
+just ui-dev     # the Vite dev server, proxying /api to a running WikiShell
 ```

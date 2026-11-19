@@ -1,4 +1,4 @@
-// Command wikiview serves an agentic-wiki bundle over HTTP.
+// Command wikishell serves an agentic-wiki bundle over HTTP.
 package main
 
 import (
@@ -16,11 +16,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/agentic-wiki/wikiview/internal/config"
-	"github.com/agentic-wiki/wikiview/internal/server"
-	"github.com/agentic-wiki/wikiview/internal/store"
-	"github.com/agentic-wiki/wikiview/internal/watch"
-	"github.com/agentic-wiki/wikiview/ui"
+	"github.com/agentic-wiki/wiki-shell/internal/config"
+	"github.com/agentic-wiki/wiki-shell/internal/server"
+	"github.com/agentic-wiki/wiki-shell/internal/store"
+	"github.com/agentic-wiki/wiki-shell/internal/watch"
+	"github.com/agentic-wiki/wiki-shell/ui"
 )
 
 // Version is set at build time via -ldflags "-X main.Version=...", the same way
@@ -35,16 +35,16 @@ func main() {
 		return // the flag package has already printed usage
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "wikiview:", err)
+		fmt.Fprintln(os.Stderr, "wikishell:", err)
 		os.Exit(2)
 	}
 	if opts.version {
-		fmt.Println("wikiview", Version)
+		fmt.Println("wikishell", Version)
 		return
 	}
 
 	if err := run(opts); err != nil {
-		fmt.Fprintln(os.Stderr, "wikiview:", err)
+		fmt.Fprintln(os.Stderr, "wikishell:", err)
 		os.Exit(1)
 	}
 }
@@ -56,12 +56,12 @@ type options struct {
 	version bool
 }
 
-// parseArgs reads the command line: `wikiview [path] [flags]`, in any order.
+// parseArgs reads the command line: `wikishell [path] [flags]`, in any order.
 //
 // The path is positional because there is only one thing to point this at, and
-// `wikiview my-kb` reads better than a flag for it. That costs something the
+// `wikishell my-kb` reads better than a flag for it. That costs something the
 // stdlib does not give for free: flag.Parse stops at the first non-flag
-// argument, so `wikiview my-kb --port 3000` would take the path and silently
+// argument, so `wikishell my-kb --port 3000` would take the path and silently
 // serve on 8080 anyway.
 //
 // So it parses in rounds, peeling off one positional argument each time flags
@@ -69,9 +69,9 @@ type options struct {
 // bigger argument library would have been considered — and this is the part of
 // one that this command actually needs.
 func parseArgs(args []string) (options, error) {
-	fs := flag.NewFlagSet("wikiview", flag.ContinueOnError)
+	fs := flag.NewFlagSet("wikishell", flag.ContinueOnError)
 	fs.Usage = func() {
-		fmt.Fprint(fs.Output(), "usage: wikiview [path] [flags]\n\n"+
+		fmt.Fprint(fs.Output(), "usage: wikishell [path] [flags]\n\n"+
 			"Serves the agentic-wiki bundle at path, or the working directory.\n\n")
 		fs.PrintDefaults()
 	}

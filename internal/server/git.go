@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/agentic-wiki/wikiview/internal/git"
+	"github.com/agentic-wiki/wiki-shell/internal/git"
 )
 
 // gitResult is what every git endpoint answers with.

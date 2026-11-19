@@ -77,7 +77,7 @@ func declare(dir, kind string, taken []string, id, folder, name string, where []
 	if len(raw) > 0 && !strings.HasSuffix(string(raw), "\n") {
 		out.WriteString("\n")
 	}
-	fmt.Fprintf(&out, "\n[[tool.wikiview.%s]]\n", kind)
+	fmt.Fprintf(&out, "\n[[tool.%s.%s]]\n", tool, kind)
 	fmt.Fprintf(&out, "id   = %s\n", quote(id))
 	fmt.Fprintf(&out, "path = %s\n", quote(folder))
 	if name != "" {

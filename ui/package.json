@@ -1,5 +1,5 @@
 {
-  "name": "wikiview-ui",
+  "name": "wikishell-ui",
   "private": true,
   "type": "module",
   "scripts": {

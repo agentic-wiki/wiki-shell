@@ -49,7 +49,7 @@ type Status struct {
 	// named from the repository root the way git names them, so a preview reads
 	// the same as the commit it describes.
 	//
-	// Everything in there, not only what wikiview wrote: an agent
+	// Everything in there, not only what WikiShell wrote: an agent
 	// editing alongside is the expected case, and a preview that hid its work
 	// would be lying about what the button does.
 	Changes []Change `json:"changes"`

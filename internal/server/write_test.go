@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentic-wiki/wikiview/internal/config"
+	"github.com/agentic-wiki/wiki-shell/internal/config"
 )
 
 func put(t *testing.T, srv *Server, path string, body any) (int, uint64) {

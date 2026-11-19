@@ -12,7 +12,7 @@ import (
 
 // This file is the fence in front of the mux. The contract is one rule:
 //
-//	Every /api request carries X-Wikiview-Token. If the server has a token
+//	Every /api request carries X-Wikishell-Token. If the server has a token
 //	(network bind), the value must equal it.
 //
 // Missing or wrong is `401`. The rest depends on where the server listens,
@@ -20,7 +20,7 @@ import (
 //
 //   - **On a loopback address** (the default) only this machine can connect,
 //     so the danger is a web page open in the browser. It cannot send the
-//     header to another origin without a CORS preflight that wikiview never
+//     header to another origin without a CORS preflight that WikiShell never
 //     approves, so any value will do. The `Host` must be a loopback name,
 //     which stops DNS rebinding (`421`). No token is created, so the plain
 //     address works and bookmarks keep working.
@@ -31,12 +31,12 @@ import (
 //
 // `/raw` serves files to `<img>` tags, which cannot set a header. On loopback
 // the `Host` check guards it. On a network bind it needs the
-// `wikiview_raw_<port>` cookie, a separate secret that every `/api` response
+// `wikishell_raw_<port>` cookie, a separate secret that every `/api` response
 // that passed the check sets, scoped to `/raw`. `/api` never accepts it.
 
 // tokenHeader is the header every API call carries. The client hard-codes the
 // same name, so renaming it is a change on both sides.
-const tokenHeader = "X-Wikiview-Token"
+const tokenHeader = "X-Wikishell-Token"
 
 // loopbackHosts are the spellings a browser may put in `Host` for an address on
 // this machine. `localhost` and `127.0.0.1` are different hosts to a browser and
@@ -65,7 +65,7 @@ func newSecret() string {
 	if _, err := rand.Read(b[:]); err != nil {
 		// A machine with no working random source cannot serve this safely, and
 		// carrying on with a predictable token would be worse than not starting.
-		panic("wikiview: cannot read random bytes for a secret: " + err.Error())
+		panic("wikishell: cannot read random bytes for a secret: " + err.Error())
 	}
 	return hex.EncodeToString(b[:])
 }
@@ -153,10 +153,10 @@ func linkHost(bindHost string, hostname func() (string, error), addrs func() ([]
 // Browsers do not scope cookies by port, so every service on this host receives
 // it. Two consequences: its value is a separate secret, never the API token,
 // so a neighbouring service that reads it gains `/raw` and nothing else; and its
-// name carries the port, so two wikiviews on one host never overwrite each
+// name carries the port, so two WikiShells on one host never overwrite each
 // other's.
 func (s *Server) rawCookie() string {
-	return "wikiview_raw_" + strconv.Itoa(s.port)
+	return "wikishell_raw_" + strconv.Itoa(s.port)
 }
 
 // networked reports whether the server is on a network address, which is the
@@ -208,9 +208,9 @@ func matches(got, want string) bool {
 // refusal is the `401` body, saying what this mode needs.
 func (s *Server) refusal() errorBody {
 	if s.networked() {
-		return errorBody{"this needs the token from the link wikiview printed"}
+		return errorBody{"this needs the token from the link WikiShell printed"}
 	}
-	return errorBody{"send the X-Wikiview-Token header (any value)"}
+	return errorBody{"send the X-Wikishell-Token header (any value)"}
 }
 
 // ServeHTTP is the fence, then the mux.

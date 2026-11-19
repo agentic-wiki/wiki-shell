@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agentic-wiki/wikiview/internal/store"
+	"github.com/agentic-wiki/wiki-shell/internal/store"
 )
 
 func newTestServer(t *testing.T) *Server {
@@ -358,7 +358,7 @@ func TestTreeCountsEachEntrysConnections(t *testing.T) {
 	}
 }
 
-// clientHeader is the X-Wikiview-Token value the app sends: this run's token on
+// clientHeader is the X-Wikishell-Token value the app sends: this run's token on
 // a network bind, and `local` on loopback, where any value is accepted.
 func clientHeader(srv *Server) string {
 	if srv.networked() {

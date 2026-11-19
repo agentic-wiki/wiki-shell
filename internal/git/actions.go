@@ -126,7 +126,7 @@ var validBranch = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,100}$`)
 // Dated and prefixed, so it sorts with its siblings, says where it came from, and
 // never collides with a branch somebody named themselves.
 func ProposedBranch(now time.Time) string {
-	return "wikiview/" + now.Format("2006-01-02-1504")
+	return "wikishell/" + now.Format("2006-01-02-1504")
 }
 
 // commitError names the cause when a commit fails for a reason git states
@@ -149,7 +149,7 @@ func commitError(err error) error {
 	for _, sign := range []string{"gpg", "agent socket", "signing", "failed to sign"} {
 		if strings.Contains(text, sign) {
 			return fmt.Errorf(
-				"the commit could not be signed, and wikiview will not make an unsigned one on your behalf: %w", err)
+				"the commit could not be signed, and WikiShell will not make an unsigned one on your behalf: %w", err)
 		}
 	}
 	return err

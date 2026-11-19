@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentic-wiki/wikiview/internal/config"
-	"github.com/agentic-wiki/wikiview/internal/store"
+	"github.com/agentic-wiki/wiki-shell/internal/config"
+	"github.com/agentic-wiki/wiki-shell/internal/store"
 )
 
 // A bundle of people who link each other in every way a link can be written,

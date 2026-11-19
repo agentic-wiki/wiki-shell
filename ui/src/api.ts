@@ -373,7 +373,7 @@ export class ApiError extends Error {
  * The server requires it on every `/api` request, so the name is a contract
  * with the other half: renaming it is a change on both sides, not a local one.
  */
-const TOKEN_HEADER = "X-Wikiview-Token";
+const TOKEN_HEADER = "X-Wikishell-Token";
 
 /**
  * What the header carries when this tab holds no token. On localhost the
@@ -766,7 +766,7 @@ export interface GitStatus {
   /** The commits a pull would take, newest first, as stale as `behind` and
    *  capped server-side; `behind` is the true count. */
   incoming: GitCommit[];
-  /** Everything a commit would include, not only what wikiview wrote. */
+  /** Everything a commit would include, not only what WikiShell wrote. */
   changes: GitChange[];
   /** Files staged elsewhere in the same repository, which a sync will not
    *  commit. Said out loud because it is not going to happen: staging work in a

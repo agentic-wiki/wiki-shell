@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentic-wiki/wiki-shell/internal/store"
 	"github.com/agentic-wiki/wiki/index"
-	"github.com/agentic-wiki/wikiview/internal/store"
 )
 
 // TreeNode is one folder in the bundle: the entries directly inside it and the
@@ -72,7 +72,7 @@ type EntryStub struct {
 
 // updated is an entry's time as the engine defines it (`SortTime`: a curated
 // frontmatter `timestamp`, else the file's mtime), in RFC 3339, or "" when it
-// has none. The engine's rule rather than one of ours, so wikiview and `wiki`
+// has none. The engine's rule rather than one of ours, so WikiShell and `wiki`
 // agree on what "recent" means.
 //
 // Known limit, accepted: a clone, checkout or pull rewrites a file's mtime, so

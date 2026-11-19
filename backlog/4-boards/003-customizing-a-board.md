@@ -77,7 +77,7 @@ Added after lanes started showing as `mid, low, high` — first-seen order, whic
 
 **One rule for both axes**, because it is one question asked twice: what the config declares, then what the field is known to read like, then whatever is left, alphabetically. `columns` had the first and third parts already; `lanes` is its counterpart, and the middle part is new to both.
 
-**A table of vocabularies wikiview recognises**, keyed by field name: `status`, `priority`, `severity`, `size`. Alphabetical is the obvious fallback and the wrong one for exactly these — `high, low, medium` is not a priority ordering — and nobody should have to configure their way out of the default. Keyed by *name* because the opinion only holds where the name does: a board grouped by `area` has no natural order and gets none invented for it.
+**A table of vocabularies WikiShell recognises**, keyed by field name: `status`, `priority`, `severity`, `size`. Alphabetical is the obvious fallback and the wrong one for exactly these — `high, low, medium` is not a priority ordering — and nobody should have to configure their way out of the default. Keyed by *name* because the opinion only holds where the name does: a board grouped by `area` has no natural order and gets none invented for it.
 
 It is only a default. A value the table has never heard of still appears rather than being dropped, and declaring `columns` or `lanes` replaces it outright.
 

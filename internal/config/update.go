@@ -129,7 +129,7 @@ type span struct{ from, to int }
 // "leave every other byte alone" something this can actually promise.
 func findTable(lines []string, kind, id string) (span, bool) {
 	want := quote(id)
-	header := "[[tool.wikiview." + kind + "]]"
+	header := "[[tool." + tool + "." + kind + "]]"
 	for i, line := range lines {
 		if strings.TrimSpace(line) != header {
 			continue
@@ -284,7 +284,7 @@ func declareRoot(path, raw string, s Settings) error {
 	if raw != "" && !strings.HasSuffix(raw, "\n") {
 		out.WriteString("\n")
 	}
-	out.WriteString("\n[[tool.wikiview.board]]\n")
+	fmt.Fprintf(&out, "\n[[tool.%s.board]]\n", tool)
 	fmt.Fprintf(&out, "id   = %s\n", quote(RootID))
 	fmt.Fprintf(&out, "path = %s\n", quote("/"))
 	values := s.values()

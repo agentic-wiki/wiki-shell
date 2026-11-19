@@ -1,12 +1,12 @@
 ---
 type: task
-title: "design wikiview before building it"
+title: "design WikiShell before building it"
 status: done
 priority: high
 tags: [design, architecture]
 ---
 
-wikiview is a web UI over a bundle: a markdown **reader** first, with kanban boards and dataset tables as views onto the same index. It is its own module, importing the engine rather than shelling out to it, so `wiki` stays a zero-dependency neutral engine.
+WikiShell is a web UI over a bundle: a markdown **reader** first, with kanban boards and dataset tables as views onto the same index. It is its own module, importing the engine rather than shelling out to it, so `wiki` stays a zero-dependency neutral engine.
 
 **Nothing gets written until this task is settled.** A UI shaped around *a board over one folder* cannot be retrofitted into a *reader over a whole bundle*: the difference is structural, not cosmetic. Retrofitting it produces a second copy of every rule the two shapes disagree about, and the copies drift.
 

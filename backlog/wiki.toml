@@ -15,7 +15,7 @@ ignore = ["../README.md", "../CHANGELOG.md"]
 # here; the bundle root stays covered, which is what keeps index.md honest.
 ignore_orphans = ["*/**"]
 
-# wikiview's own board, over its own backlog. The first consumer of the namespace
+# WikiShell's own board, over its own backlog. The first consumer of the namespace
 # is the tool that proposed it: if this is awkward to write or read, that is the
 # design telling us something before anyone else has to live with it.
 #

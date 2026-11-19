@@ -9,7 +9,7 @@ blockers: [/3-reader/005-markdown-and-checkboxes.md]
 
 The header's three actions. **Refresh** rebuilds the index. **Pull** is `git pull --rebase`. **Sync** is commit and push.
 
-These are the first things wikiview does that reach outside the machine, and the first that are hard to undo. They are shaped accordingly.
+These are the first things WikiShell does that reach outside the machine, and the first that are hard to undo. They are shaped accordingly.
 
 ## Preview, then confirm
 
@@ -22,7 +22,7 @@ Not ceremony. A push is irreversible from this UI's point of view, and a rebase 
 The rule, decided rather than discovered later:
 
 1. **Undo the attempt** — `git rebase --abort`, restoring the tree exactly as it was before. The UI never leaves the user in a conflicted state it cannot get them out of.
-2. **Offer to push the local work as a new branch**, with a proposed name (`wikiview/2026-08-10-1430`) the user can confirm or override.
+2. **Offer to push the local work as a new branch**, with a proposed name (`wikishell/2026-08-10-1430`) the user can confirm or override.
 
 That turns a merge conflict from "your knowledge base is now broken and you are in a web page" into "your work is safe on a branch, resolve it where you have a real tool". It is the difference between an action that can strand someone and one that cannot.
 
@@ -35,7 +35,7 @@ That turns a merge conflict from "your knowledge base is now broken and you are 
 
 ## Open
 
-Whether `sync` should refuse when the working tree contains changes the user did not make through wikiview. Leaning no — it is their repo and their folder, and an agent editing alongside is the expected case, not an anomaly — but the preview must show everything that will be committed, not only what wikiview touched.
+Whether `sync` should refuse when the working tree contains changes the user did not make through WikiShell. Leaning no — it is their repo and their folder, and an agent editing alongside is the expected case, not an anomaly — but the preview must show everything that will be committed, not only what WikiShell touched.
 
 **Acceptance:** each action previews before acting; a failed pull restores the previous state and offers a named branch; the actions are hidden when the bundle is not a git repository; committing is scoped to the bundle; nothing runs without being asked.
 
@@ -67,4 +67,4 @@ Whether `sync` should refuse when the working tree contains changes the user did
 - **`add -- .` scoped the staging, but the commit swept the whole index.** `git commit` with no pathspec commits everything staged, so a bundle sitting inside a larger repository put whatever somebody had staged in their terminal into the wiki's commit. Every step now carries the bundle's pathspec, and the preview says how many staged files it is stepping around: not committing them is right, and letting somebody assume otherwise after pressing "commit and push" is not. A count rather than the paths, since the place to look at somebody else's work is `git status`.
 - A sync refused for want of a message had already staged the bundle, leaving work staged by a button nobody got to press. It asks first and stages after.
 
-**Left as the task decided it.** A sync does not refuse when the worktree holds changes nobody made through wikiview: it is the user's repo, and an agent editing alongside is the expected case. The preview showing everything that would be committed is the honest half of that bargain.
+**Left as the task decided it.** A sync does not refuse when the worktree holds changes nobody made through WikiShell: it is the user's repo, and an agent editing alongside is the expected case. The preview showing everything that would be committed is the honest half of that bargain.
