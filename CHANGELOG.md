@@ -2,12 +2,6 @@
 
 All notable changes to WikiShell are documented here. This project follows [semantic versioning](https://semver.org); while pre-1.0, breaking changes bump the minor version.
 
-## Unreleased
-
-### Breaking
-
-- **`POST /api/commit` only commits.** Its `push` option is gone, and so are `pushed` and `pushError` in its answer: pushing is `POST /api/git/push` alone, the one way to push. A `push` still sent is ignored.
-
 ## v0.20.0
 
 Editing pages in place, and the changes view to review and commit what changed: the server (the editor ADR's and the changes-view ADR's slice 2) and the app (slice 3). Needs `wiki` v0.23.1.
@@ -31,7 +25,7 @@ Editing pages in place, and the changes view to review and commit what changed: 
 - **`GET /api/changes`**: every uncommitted change in the bundle (new, modified, deleted, renamed), with its version and kind (`page`, `text`, `binary`, `dot`, `link`), the blocks or lines added and removed, and `mode` when its git mode changed (an execute bit, or a file that became a symlink or stopped being one). Read through a shadow index and object folder in the user's cache folder (0700, deleted on stop, or at the next start after a crash), so the repository's index and objects are never written. Dot paths are listed by name only, and not at all on a network address. Files over 2 MiB carry their `size` instead of a diff, and are streamed, never held whole. A file with a `filter` attribute (git-lfs) has no diff either, so its clean filter never runs on a listing.
 - **`GET /api/changes/{path}`**: one file's diff. A page's is by block (HEAD's blocks and the operations to now) and by field, with `header: true` when its header's bytes changed even where no field's value did; any other file's is git's line diff. `hunks` lists what can be discarded, numbered by the server. A dot path is `403`.
 - **`POST /api/changes/discard`**: put a whole file, or one hunk, back as HEAD has it, guarded by the version shown (`409` if it moved). A page's hunk (any `.md` file) is worked out from the bytes shown and written only if the file still has them, all or nothing; a text hunk through `git apply --reverse`. A new file is deleted, a symlink itself and never its target.
-- **`POST /api/commit`**: commit the files shown, each at its shown version, from the bytes checked, never from the worktree at commit time. A file that changed since is refused and the rest is committed. The user's other staged files stay staged. `pre-commit` and `commit-msg` run (git 2.36 or later), signing follows `commit.gpgsign`, a branch that moved meanwhile is `409` with nothing committed, and a commit with nothing to commit is `422`. Each file's mode is the one `git add` would give it. With `push`, it pushes after, and a failed push comes back as `pushError` with the commit kept.
+- **`POST /api/commit`**: commit the files shown, each at its shown version, from the bytes checked, never from the worktree at commit time. A file that changed since is refused and the rest is committed. The user's other staged files stay staged. `pre-commit` and `commit-msg` run (git 2.36 or later), signing follows `commit.gpgsign`, a branch that moved meanwhile is `409` with nothing committed, and a commit with nothing to commit is `422`. Each file's mode is the one `git add` would give it. It never pushes: pushing is `POST /api/git/push`, from the popover.
 
 - **Edit a page where you read it**, as in Notion: click and type, `/` for blocks, `@` to link a page, Markdown shortcuts, a toolbar on a selection, tables that grow by their controls or by Tab, and a handle on each block to turn it into another kind, duplicate, move or delete it (or drag it). Each change is saved to the file block by block, so every byte you didn't touch stays as it was. Fields are edited in place too: a list one item a line, a switch for true or false, a date picker, and a select of `wiki.toml`'s types.
 - **Changes made outside come in live.** An agent's edit to another block appears at once, lit; one to the block you're typing in is held with a panel, and you keep yours or take theirs. A field changed outside while you edit it is offered, never overwritten. Unsaved text is kept in the tab, and survives a reload.
