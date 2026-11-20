@@ -225,3 +225,40 @@ test("an empty row the user adds is kept; a head-only table's filler row isn't a
   expect(head.source).toBe(0);
   expect(lineup(engine, head, [{ kind: "table-head", text: "| a |\n| --- |", hash: "h0" }], head.doc)).toEqual([]);
 });
+
+// The CEO's "everything I add is an edit conflict": Enter makes an empty
+// paragraph, and a save during the pause before typing sent it as an insert
+// with no text, which the server refuses, failing the whole save.
+test("an empty paragraph is no block: nothing is sent for it, and emptying one deletes it", () => {
+  const body = "First.\n\nSecond.\n";
+  const blocks: Block[] = [
+    { kind: "paragraph", text: "First.", hash: "a" },
+    { kind: "paragraph", text: "Second.", hash: "b" },
+  ];
+  const loaded = load(engine, body, blocks);
+  const para = loaded.doc.type.schema.nodes.paragraph!;
+  // Enter after "First.": an empty paragraph between the two.
+  const entered = EditorState.create({ doc: loaded.doc }).tr.insert(loaded.doc.child(0).nodeSize, para.create()).doc;
+  expect(lineup(engine, loaded, blocks, entered)).toEqual([]);
+  // Typed into, it is an insert of its text.
+  const typed = EditorState.create({ doc: entered }).tr.insertText("New.", loaded.doc.child(0).nodeSize + 1).doc;
+  expect(lineup(engine, loaded, blocks, typed)).toEqual([{ op: "insert", after: 0, hash: "a", text: "New." }]);
+  // A paragraph whose text is all deleted is a delete, never a replace by nothing.
+  const first = loaded.doc.child(0);
+  const emptied = EditorState.create({ doc: loaded.doc }).tr.delete(1, first.nodeSize - 1).doc;
+  expect(lineup(engine, loaded, blocks, emptied)).toEqual([{ op: "delete", at: 0, hash: "a" }]);
+});
+
+// Revy (msg-986): Enter then a space, or a hard break, leaves a paragraph
+// whose Markdown is just as blank: it is no block either. An image alone is.
+test("a paragraph of only spaces or hard breaks sends nothing; an image alone is a block", () => {
+  const blocks: Block[] = [{ kind: "paragraph", text: "First.", hash: "a" }];
+  const loaded = load(engine, "First.\n", blocks);
+  const { schema } = loaded.doc.type;
+  const at = loaded.doc.child(0).nodeSize;
+  const add = (...content: Node[]) => EditorState.create({ doc: loaded.doc }).tr.insert(at, schema.nodes.paragraph!.create(null, content)).doc;
+  expect(lineup(engine, loaded, blocks, add(schema.text(" ")))).toEqual([]);
+  expect(lineup(engine, loaded, blocks, add(schema.nodes.hardbreak!.create()))).toEqual([]);
+  const image = lineup(engine, loaded, blocks, add(schema.nodes.image!.create({ src: "./a.png", alt: "a" })));
+  expect(image.map((o) => o.op)).toEqual(["insert"]);
+});

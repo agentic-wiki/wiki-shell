@@ -414,3 +414,13 @@ test("a file that isn't a page names its path once, and a mode-only change says 
   expect(box.textContent!.match(/Now executable/g)?.length).toBe(1);
   expect(box.textContent).toContain("Only the file's mode changed. Change it back with chmod.");
 });
+
+test("discarding a new file asks \"Are you sure?\"", async () => {
+  await mount({
+    list: list([{ path: "/notes/n.md", change: "new", version: "n1", kind: "page", title: "N", added: 1, removed: 0 }]),
+    diffs: { "/notes/n.md": () => json({ ...pageDiff("n1"), hunks: [] }) },
+  });
+  await click(button("Discard changes"));
+  expect(question().getAttribute("aria-label")).toBe("Are you sure?");
+  expect(question().textContent).toContain("Are you sure?");
+});

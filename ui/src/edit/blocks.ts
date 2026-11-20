@@ -307,7 +307,23 @@ function flatten(node: Node, depth: number, pos = 0, top = 0): Unit[] {
     return out;
   }
   if (name === "source") return [{ ...sourceUnit(node), from: pos, to: pos + node.nodeSize, top }];
+  // An empty paragraph, the one Enter makes (or one holding only spaces and
+  // hard breaks, whose Markdown is just as blank), has no Markdown: it is no block
+  // of the page until it holds text. Sent as one, the server refused the whole
+  // save (an insert needs text), and every pause after Enter looked like a
+  // conflict. Emptied, a paragraph is a delete.
+  if (name === "paragraph" && blank(node)) return [];
   return [{ kind: "node", node, key: keyOf(node), depth: 0, from: pos, to: pos + node.nodeSize, top }];
+}
+
+/** A paragraph of only spaces and hard breaks: no text, and nothing else
+ *  inline (an image alone is a block). */
+function blank(node: Node): boolean {
+  let only = true;
+  node.forEach((c) => {
+    if (!(c.isText || c.type.name === "hardbreak")) only = false;
+  });
+  return only && node.textContent.trim() === "";
 }
 
 /**

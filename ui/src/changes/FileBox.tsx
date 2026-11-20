@@ -99,7 +99,7 @@ export function FileBox({
       {can && !modeOnly && (
         <Discard
           label="Discard changes"
-          question={file.change === "new" ? `Delete ${title}? It was never committed.` : `Discard all changes to ${title}?`}
+          question={file.change === "new" ? "Are you sure?" : `Discard all changes to ${title}?`}
           onDiscard={() => discard()}
         />
       )}

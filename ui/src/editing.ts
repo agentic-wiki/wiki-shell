@@ -98,12 +98,29 @@ export function keptAll(bundle: string, path: string): Kept[] {
       const key = sessionStorage.key(i);
       if (!key?.startsWith(prefix)) continue;
       const kept = JSON.parse(sessionStorage.getItem(key)!) as Kept;
-      if (kept.bundle === bundle) out.push(kept);
+      kept.ops = written(kept.ops);
+      // Nothing left to write (only empty blocks): nothing to offer.
+      if (kept.bundle === bundle && kept.ops.length) out.push(kept);
     }
   } catch {
     // Nothing kept, or nothing to keep it in.
   }
   return out.sort((a, b) => a.at - b.at);
+}
+
+/**
+ * Operations as the server takes them: an insert with no text is an empty
+ * block, which is no content, and a replace by nothing is a delete. Copies
+ * kept before empty blocks were left out of saves hold such operations, and
+ * putting them back as they were was refused again.
+ */
+export function written(ops: Op[]): Op[] {
+  return ops.flatMap((o): Op[] => {
+    const empty = "text" in o && !o.blocks && !(o.text ?? "").trim();
+    if (o.op === "insert" && empty) return [];
+    if (o.op === "replace" && empty) return [{ op: "delete", at: o.at, hash: o.hash }];
+    return [o];
+  });
 }
 
 /** One editor's kept copy of a page, if it has one. */

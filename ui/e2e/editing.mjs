@@ -46,6 +46,9 @@ try {
   const p = shot.page;
   const errors = [];
   p.on("pageerror", (e) => errors.push(e.message));
+  // Every save the server refused: none should be.
+  const refused = [];
+  p.on("response", (r) => r.url().includes("/api/blocks/") && r.request().method() === "PUT" && r.status() >= 400 && refused.push(r.status()));
   await p.goto(`http://localhost:${port}/wiki/notes/a.md`, { waitUntil: "load" });
   await p.locator("article .ProseMirror").waitFor({ state: "visible" });
   const para = p.locator("article .ProseMirror > p").first();
@@ -53,6 +56,16 @@ try {
   await p.mouse.click(box.x + box.width - 2, box.y + box.height - 6);
   await p.keyboard.press("End");
   await p.keyboard.press("Enter");
+  // A pause after Enter, past a save, before typing: the empty paragraph is
+  // no block yet, so the save sends nothing for it (the CEO's "everything I
+  // add is an edit conflict").
+  await p.waitForTimeout(2200);
+  check(refused.length === 0 && (await p.locator("[data-held], [data-outside-bar]").count()) === 0, "a pause after Enter saves cleanly, with no conflict");
+  // And with only a space typed in it (Revy): its Markdown is just as blank.
+  await p.keyboard.press("Space");
+  await p.waitForTimeout(2200);
+  check(refused.length === 0 && (await p.locator("[data-held], [data-outside-bar]").count()) === 0, "a paragraph of one space saves cleanly too");
+  await p.keyboard.press("Backspace");
 
   await p.keyboard.type("/head");
   check((await p.locator("#slash-menu [role=option]").count()) === 3, "/ opens the menu, filtered as typed");
@@ -128,6 +141,25 @@ try {
 
   await p.waitForTimeout(2000);
   const d = disk();
+  check(refused.length === 0, `no save was refused${refused.length ? ": " + refused.join(", ") : ""}`);
+
+  // A save the server refuses is said as an error, never as a conflict, and
+  // the text stays: in the page, and kept in the tab.
+  await p.route("**/api/blocks/**", (r) =>
+    r.request().method() === "PUT"
+      ? r.fulfill({ status: 422, contentType: "application/json", body: JSON.stringify({ error: "refused: for the test" }) })
+      : r.continue(),
+  );
+  await p.locator("article .ProseMirror > p").last().click();
+  await p.keyboard.press("End");
+  await p.keyboard.type(" REFUSED");
+  await p.waitForTimeout(2000);
+  const toolbar = await p.locator("article [data-chrome]").first().innerText();
+  check(toolbar.includes("Not saved") && !/to check/.test(toolbar), "a refused save says Not saved, not a conflict");
+  check((await p.locator("[data-held], [data-outside-bar]").count()) === 0, "and marks nothing as changed outside");
+  check((await p.locator("article .ProseMirror").innerText()).includes("REFUSED"), "the text stays on the page");
+  check((await p.evaluate(() => Object.keys(sessionStorage).some((k) => k.startsWith("wikishell:unsaved:")))), "and is kept in the tab");
+  await p.unroute("**/api/blocks/**");
   // A double click selects one word: that word is made bold.
   check(d.includes("## A **heading**"), "the heading, its word made bold, is in the file");
   check(d.includes("[The target page](./target.md)"), "the link is a standard relative link in the file");

@@ -246,7 +246,7 @@ test("a save sent on leaving that never answers leaves its text kept", async () 
 });
 
 test("kept text belongs to its bundle", () => {
-  putKept({ bundle: "b1", session: "s", seq: 1, base: "v", baseBlocks: [], ops: [], at: 0 }, "/a.md");
+  putKept({ bundle: "b1", session: "s", seq: 1, base: "v", baseBlocks: [], ops: [{ op: "insert", after: -1, hash: "", text: "Kept." }], at: 0 }, "/a.md");
   expect(keptAll("b2", "/a.md")).toEqual([]);
   expect(keptAll("b1", "/a.md")).toHaveLength(1);
 });

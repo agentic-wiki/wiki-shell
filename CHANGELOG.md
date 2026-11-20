@@ -11,6 +11,9 @@ All notable changes to WikiShell are documented here. This project follows [sema
 
 ### Fixed
 
+- **Adding a block no longer ends in an edit conflict.** A new empty block (Enter, then a pause, a space or a line break) was saved with no text, refused, and shown as a conflict; it's now saved once it has text, and emptying a block deletes it.
+- **A refused save says "Not saved" with its reason**, keeps your text, and never shows as a conflict.
+- **"Put it back" saves text kept before this fix.**
 - **A page no longer scrolls past its end** into an empty screen: only the view scrolls.
 - **A second click on a block's handle closes its menu**, and so does a click anywhere else.
 - **Undo keeps working after a change made outside**: it steps back through your own typing and keeps the agent's edit.
@@ -18,6 +21,7 @@ All notable changes to WikiShell are documented here. This project follows [sema
 ### Changed
 
 - **The changes view draws a changed block as the reader does**, with its changed words marked once per run.
+- **Discarding a new file asks "Are you sure?"**
 - **"Discard file" is now "Discard changes"**, and the git popover's button always reads "Review changes".
 - **Shortcut hints draw their key**: ⌘ on a Mac, "Ctrl" elsewhere.
 - Small polish: a file's path and its mode change are shown once, the phone's file picker reads "3 of 7 · title", "Turn into" marks the current kind for screen readers, and following the "arrived" chip moves focus to that file.
