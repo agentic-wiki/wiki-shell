@@ -258,19 +258,21 @@ test("a new file that isn't a page starts unticked; a dot file has no checkbox a
   expect(text()).toContain("1 dot file is left for git.");
 });
 
-test("Commit sends each ticked file at its shown version, and pushes with an upstream", async () => {
+// The view only commits, upstream or not: pushing is the git popover's.
+test("Commit sends each ticked file at its shown version, and only commits", async () => {
   const sent = await mount({
     list: list([page()]),
     diffs: { "/notes/a.md": () => json(pageDiff()) },
-    post: () => json({ committed: ["/notes/a.md"], refused: [], commit: "abc", pushed: true, status: git }),
+    post: () => json({ committed: ["/notes/a.md"], refused: [], commit: "abc", status: git }),
   });
   const message = host!.querySelector<HTMLInputElement>("[aria-label='Commit message']")!;
   expect(message.value).toBe("Update notes/a.md");
-  await click(button("Commit & push"));
+  expect(button("Commit & push")).toBeUndefined();
+  await click(button("Commit"));
   expect(sent).toEqual([
-    { path: "/api/commit", body: { message: "Update notes/a.md", files: [{ path: "/notes/a.md", version: "v1" }], push: true } },
+    { path: "/api/commit", body: { message: "Update notes/a.md", files: [{ path: "/notes/a.md", version: "v1" }] } },
   ]);
-  expect(document.querySelector("[role=status]")?.textContent).toContain("Committed 1 file and pushed.");
+  expect(document.querySelector("[role=status]")?.textContent).toBe("Committed 1 file.");
 });
 
 test("a file refused at commit is named; the others commit", async () => {
@@ -279,7 +281,7 @@ test("a file refused at commit is named; the others commit", async () => {
       list: list([page(), page({ path: "/notes/b.md", title: "B" })]),
       diffs: { "/notes/a.md": () => json(pageDiff()), "/notes/b.md": () => json(pageDiff()) },
       post: () =>
-        json({ committed: ["/notes/a.md"], refused: [{ path: "/notes/b.md", reason: "changed after you read it" }], commit: "abc", pushed: false, status: git }),
+        json({ committed: ["/notes/a.md"], refused: [{ path: "/notes/b.md", reason: "changed after you read it" }], commit: "abc", status: git }),
     },
     { status: { ...git, remote: "" } },
   );
@@ -300,7 +302,7 @@ test("a commit a hook refuses shows the hook's output above the bar, and nothing
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(message, "My words");
     message.dispatchEvent(new Event("input", { bubbles: true }));
   });
-  await click(button("Commit & push"));
+  await click(button("Commit"));
   expect(text()).toContain("The commit was refused by the repository's pre-commit hook.");
   expect(host!.querySelector("pre")?.textContent).toBe("lint: 2 problems");
   expect(host!.querySelector<HTMLInputElement>("[aria-label='Commit message']")!.value).toBe("My words");

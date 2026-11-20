@@ -604,7 +604,7 @@ func TestACommitRefusesAChangedFileAndCommitsTheRest(t *testing.T) {
 	if sha, _ := out["commit"].(string); sha != gitIn(t, dir, "rev-parse", "HEAD") {
 		t.Errorf("commit %v", out["commit"])
 	}
-	if out["status"] == nil || out["pushed"] != false {
+	if out["status"] == nil {
 		t.Errorf("%v", out)
 	}
 	if got := gitIn(t, dir, "show", "HEAD:notes/a.md"); got+"\n" != shownA {
@@ -941,26 +941,26 @@ func TestPageCountsFollowHead(t *testing.T) {
 	}
 }
 
-// With push, the commit goes to the remote; a failed push leaves the commit
-// and says why.
-func TestACommitCanPush(t *testing.T) {
+// A commit only commits: pushing is POST /api/git/push alone. A client that
+// still sends "push" gets the commit and nothing more, and the answer says
+// nothing about a push.
+func TestACommitNeverPushes(t *testing.T) {
 	srv, remote := newGitServer(t)
-	dir := srv.store.Dir
+	before := gitIn(t, remote, "rev-parse", "main")
 	writeFile(t, srv, "note.md", "---\ntype: note\n---\nn\n")
 	listed, _ := listChanges(t, srv)
-	if code, out := commit(t, srv, map[string]any{"message": "Pushed", "files": shownFiles(listed, "/note.md"), "push": true}); code != http.StatusOK || out["pushed"] != true {
+	code, out := commit(t, srv, map[string]any{"message": "Not pushed", "files": shownFiles(listed, "/note.md"), "push": true})
+	if code != http.StatusOK || out["commit"] == "" {
 		t.Fatalf("%d %v", code, out)
 	}
-	if log := gitIn(t, remote, "log", "--format=%s", "-1"); log != "Pushed" {
-		t.Errorf("the remote has %q", log)
+	if _, ok := out["pushed"]; ok {
+		t.Errorf("the answer speaks of a push: %v", out)
 	}
-
-	gitIn(t, dir, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "gone.git"))
-	writeFile(t, srv, "note.md", "---\ntype: note\n---\nm\n")
-	listed, _ = listChanges(t, srv)
-	code, out := commit(t, srv, map[string]any{"message": "Not pushed", "files": shownFiles(listed, "/note.md"), "push": true})
-	if code != http.StatusOK || out["pushed"] != false || out["pushError"] == nil || out["commit"] == "" {
-		t.Errorf("%d %v", code, out)
+	if _, ok := out["pushError"]; ok {
+		t.Errorf("the answer speaks of a push: %v", out)
+	}
+	if after := gitIn(t, remote, "rev-parse", "main"); after != before {
+		t.Error("the commit was pushed")
 	}
 }
 

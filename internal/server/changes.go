@@ -922,14 +922,13 @@ func replay(head, now []parse.Block, ops []parse.Op, skip map[int]bool) ([]parse
 }
 
 // commitRequest is `POST /api/commit`: the ticked files, each with the version
-// the user saw, and whether to push after.
+// the user saw. A commit never pushes: that is POST /api/git/push alone.
 type commitRequest struct {
 	Message string `json:"message"`
 	Files   []struct {
 		Path    string `json:"path"`
 		Version string `json:"version"`
 	} `json:"files"`
-	Push bool `json:"push"`
 }
 
 type refusal struct {
@@ -1006,7 +1005,7 @@ func (s *Server) handleCommit(w http.ResponseWriter, r *http.Request) {
 		files = append(files, file)
 		committed = append(committed, f.Path)
 	}
-	answer := map[string]any{"committed": committed, "refused": refused, "commit": "", "pushed": false}
+	answer := map[string]any{"committed": committed, "refused": refused, "commit": ""}
 	if len(files) > 0 {
 		sha, err := git.CommitFiles(r.Context(), s.store.Dir, s.shadow, req.Message, files)
 		switch {
@@ -1022,13 +1021,6 @@ func (s *Server) handleCommit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		answer["commit"] = sha
-		if req.Push && git.Repo(s.store.Dir).Remote != "" {
-			if _, err := git.Push(r.Context(), s.store.Dir); err != nil {
-				answer["pushError"] = err.Error()
-			} else {
-				answer["pushed"] = true
-			}
-		}
 	}
 	answer["status"] = s.gitStatus()
 	writeJSON(w, http.StatusOK, answer)

@@ -660,8 +660,10 @@ export const api = {
   /** Undoes one hunk, or the whole file without `hunk`. */
   discard: (path: string, version: string, hunk?: number) =>
     post<{ version: string }>("/api/changes/discard", { path, version, hunk }),
-  commit: (message: string, files: { path: string; version: string }[], push: boolean) =>
-    post<Committed>("/api/commit", { message, files, push }),
+  /** Commits the files, each at the version shown. It never pushes: pushing
+   *  is `gitPush`, in the git popover. */
+  commit: (message: string, files: { path: string; version: string }[]) =>
+    post<Committed>("/api/commit", { message, files }),
 };
 
 /** How many reconnects in a row before giving up rather than retrying forever. */
@@ -955,8 +957,5 @@ export interface Committed {
   committed: string[];
   refused: { path: string; reason: string }[];
   commit: string;
-  pushed: boolean;
-  /** The push's error, when one was asked and failed; the commit stands. */
-  pushError?: string;
   status: GitStatus;
 }

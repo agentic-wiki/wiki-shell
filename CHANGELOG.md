@@ -2,6 +2,12 @@
 
 All notable changes to WikiShell are documented here. This project follows [semantic versioning](https://semver.org); while pre-1.0, breaking changes bump the minor version.
 
+## Unreleased
+
+### Breaking
+
+- **`POST /api/commit` only commits.** Its `push` option is gone, and so are `pushed` and `pushError` in its answer: pushing is `POST /api/git/push` alone, the one way to push. A `push` still sent is ignored.
+
 ## v0.20.0
 
 Editing pages in place, and the changes view to review and commit what changed: the server (the editor ADR's and the changes-view ADR's slice 2) and the app (slice 3). Needs `wiki` v0.23.1.

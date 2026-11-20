@@ -280,7 +280,7 @@ function refusedLine(refused: Committed["refused"]): string {
 
 /**
  * The sticky commit bar: the message (proposed from what is ticked until it's
- * edited), "N of M files", and Commit, or Commit & push with an upstream. A
+ * edited), "N of M files", and Commit (pushing is the git popover's). A
  * commit refused by a hook, or failing, shows git's words above it until the
  * next Commit.
  */
@@ -295,13 +295,12 @@ function CommitBar({
   versionOf: (f: ChangedFile) => string;
   onCommitted: () => Promise<void>;
 }) {
-  const [status, setStatus] = useGit();
+  const [, setStatus] = useGit();
   const toast = useToast();
   const [typed, setTyped] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<{ title: string; output: string } | null>(null);
   const message = typed ?? proposeMessage(ticked.map((f) => ({ path: f.path.slice(1) })));
-  const push = !!status?.remote;
   const committable = files.filter((f) => f.kind !== "dot").length;
   const dots = files.length - committable;
 
@@ -312,17 +311,12 @@ function CommitBar({
       const done: Committed = await api.commit(
         message,
         ticked.map((f) => ({ path: f.path, version: versionOf(f) })),
-        push,
       );
       setStatus(done.status);
       const n = count(done.committed.length, "file");
       // One toast says it all: a new one would replace the last.
-      const said = [
-        done.commit && (done.pushed ? `Committed ${n} and pushed.` : `Committed ${n}.`),
-        refusedLine(done.refused),
-        done.pushError && "The push failed: " + done.pushError,
-      ].filter(Boolean);
-      toast(said.join(" "), done.refused.length || done.pushError ? "danger" : "ok");
+      const said = [done.commit && `Committed ${n}.`, refusedLine(done.refused)].filter(Boolean);
+      toast(said.join(" "), done.refused.length ? "danger" : "ok");
       if (done.commit) setTyped(null);
       await onCommitted();
     } catch (e) {
@@ -371,7 +365,7 @@ function CommitBar({
           onClick={commit}
           className="bg-accent text-on-accent h-9 rounded-[9px] px-4 font-semibold hover:brightness-110 disabled:opacity-40"
         >
-          {busy ? "Committing…" : push ? "Commit & push" : "Commit"}
+          {busy ? "Committing…" : "Commit"}
         </button>
       </div>
     </div>
