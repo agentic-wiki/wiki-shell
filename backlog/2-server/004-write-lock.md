@@ -7,7 +7,9 @@ tags: [feature, server, write]
 blockers: []
 ---
 
-The write path today is optimistic: every read carries a version, and a write must present the version it was made from, so a second writer who has gone stale is rejected with the entry's current version rather than silently clobbering it. That is the right guard for a single write. It is not enough for an edit that lasts minutes, because the version only speaks at the moment of writing — two people can both have a file open, both be mid-sentence, and the second one to finish learns too late that the first already moved. This task is the missing half: a lock a session takes on a file while it is editing, holds as long as it is alive, and that dies on its own when the editor stops.
+The write path today is optimistic: every read carries a version, and a write must present the version it was made from, so a second writer who has gone stale is rejected with the entry's current version rather than silently clobbering it. 
+
+That is the right guard for a single write. It is not enough for an edit that lasts minutes, because the version only speaks at the moment of writing — two people can both have a file open, both be mid-sentence, and the second one to finish learns too late that the first already moved. This task is the missing half: a lock a session takes on a file while it is editing, holds as long as it is alive, and that dies on its own when the editor stops.
 
 ## What the lock is
 
