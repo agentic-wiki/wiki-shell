@@ -2,8 +2,11 @@ package server
 
 import (
 	"bufio"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -304,4 +307,57 @@ func TestAQuietStreamKeepsSendingHeartbeats(t *testing.T) {
 		}
 	}
 	t.Fatal("no heartbeat arrived")
+}
+
+// A table an older app writes back while WikiShell runs is renamed on the
+// next rebuild, and served as a board at once.
+func TestAnOldTableWrittenBackIsRenamed(t *testing.T) {
+	srv := newTestServer(t)
+	path := filepath.Join(srv.store.Dir, "wiki.toml")
+	old := "spec = \"0.1\"\n\n[[tool.wikiview.board]]\nid = \"notes\"\npath = \"/notes\"\nwhere = []\n"
+	if err := os.WriteFile(path, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.RebuildAndNotify(); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, _ := os.ReadFile(path)
+	if want := "spec = \"0.1\"\n\n[[board]]\nid = \"notes\"\npath = \"/notes\"\nwhere = []\n"; string(raw) != want {
+		t.Errorf("wiki.toml = %q, want %q", raw, want)
+	}
+	var got BundleInfo
+	if code := get(t, srv, "/api/bundle", &got); code != http.StatusOK || len(got.Boards) != 1 || got.Boards[0].ID != "notes" {
+		t.Errorf("code=%d boards=%+v, want the renamed board", code, got.Boards)
+	}
+}
+
+// A rename that fails is the one thing said: the old tables it could not move
+// are not also listed as keys left behind.
+func TestAFailedRenameSaysOnlyThat(t *testing.T) {
+	srv := newTestServer(t)
+	target := filepath.Join(t.TempDir(), "wiki.toml")
+	if err := os.WriteFile(target, []byte("spec = \"0.1\"\n\n[[tool.wikiview.board]]\nid = \"a\"\npath = \"/\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(srv.store.Dir, "wiki.toml")
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.store.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	log.SetOutput(&out)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	if err := srv.MigrateConfig(); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); !strings.Contains(got, "could not rename the [tool.wikiview] tables") || strings.Contains(got, "still holds") {
+		t.Errorf("logged %q, want only the failed rename", got)
+	}
 }

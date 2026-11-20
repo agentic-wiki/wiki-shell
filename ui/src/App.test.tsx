@@ -30,7 +30,7 @@ const bundle: BundleInfo = {
   dir: "/tmp/my-kb",
   spec: "0.1",
   entries: 3,
-  tools: ["wikiview"],
+  tools: ["other"],
   tags: [],
   version: 1,
   boards: [{ path: "/notes", id: "notes", name: "Notes", status: "status", cards: 3 }],

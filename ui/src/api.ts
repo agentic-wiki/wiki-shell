@@ -14,10 +14,10 @@ export interface BundleInfo {
   entries: number;
   tools: string[];
   version: number;
-  /** Boards declared in `[tool.wikiview]`, with their defaults filled in.
+  /** Boards declared in `[[board]]`, with their defaults filled in.
    *  Absent when the bundle declares none, which is the common case. */
   boards?: (BoardConfig & { /** Every card on it. */ cards: number })[];
-  /** Graphs declared in `[tool.wikiview]`. There is no built-in one, so absent
+  /** Graphs declared in `[[graph]]`. There is no built-in one, so absent
    *  means none. */
   graphs?: (GraphConfig & { /** The entries it is over, neighbours not counted. */ entries: number })[];
   /** Every tag in the bundle, first appearance first. A tag's colour is its
@@ -167,7 +167,7 @@ export interface TreeNode {
 }
 
 /**
- * A board a bundle declares in `[tool.wikiview]`, beyond the built-in `root`.
+ * A board a bundle declares in `[[board]]`, beyond the built-in `root`.
  */
 export interface BoardConfig {
   path: string;

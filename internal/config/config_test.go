@@ -53,7 +53,7 @@ func TestNoSectionIsNotAProblem(t *testing.T) {
 
 // Every key but `path` has a default, so a board can be declared in two lines.
 func TestDefaultsFillInWhatIsLeftOut(t *testing.T) {
-	cfg, problems := load(t, "spec = \"0.1\"\n\n[[tool.wikiview.board]]\nid = \"backlog\"\npath = \"/backlog\"\n")
+	cfg, problems := load(t, "spec = \"0.1\"\n\n[[board]]\nid = \"backlog\"\npath = \"/backlog\"\n")
 	if len(problems) != 0 {
 		t.Fatalf("problems=%v", problems)
 	}
@@ -81,13 +81,13 @@ func TestDefaultsFillInWhatIsLeftOut(t *testing.T) {
 func TestSeveralBoardsKeepTheirOwnSettings(t *testing.T) {
 	cfg, problems := load(t, `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id      = "backlog"
 path    = "/backlog"
 columns = ["todo", "done"]
 lane    = "priority"
 
-[[tool.wikiview.board]]
+[[board]]
 id     = "everything"
 path   = "/"
 where  = ["type!=task"]
@@ -115,19 +115,22 @@ status = "stage"
 func TestAMisspelledKeyIsReported(t *testing.T) {
 	_, problems := load(t, `spec = "0.1"
 
-[tool.wikiview]
-backlogs = ["/backlog"]
-
-[[tool.wikiview.board]]
-path    = "/backlog"
+[[board]]
+id       = "backlog"
+path     = "/backlog"
 collumns = ["todo"]
+
+[[graph]]
+id        = "map"
+path      = "/backlog"
+neighbors = true
 `)
 	joined := strings.Join(problems, "\n")
-	if !strings.Contains(joined, "backlogs") {
-		t.Errorf("problems=%v, want the unknown top-level key named", problems)
-	}
-	if !strings.Contains(joined, "collumns") {
+	if !strings.Contains(joined, "unknown key in board 1: collumns") {
 		t.Errorf("problems=%v, want the unknown board key named", problems)
+	}
+	if !strings.Contains(joined, "unknown key in graph 1: neighbors") {
+		t.Errorf("problems=%v, want the unknown graph key named", problems)
 	}
 }
 
@@ -136,16 +139,16 @@ collumns = ["todo"]
 func TestProblemsDoNotStopTheRest(t *testing.T) {
 	cfg, problems := load(t, `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id    = "nowhere"
 path  = "/nowhere"
 
-[[tool.wikiview.board]]
+[[board]]
 id    = "bad"
 path  = "/backlog"
 where = ["this is not a filter"]
 
-[[tool.wikiview.board]]
+[[board]]
 id   = "fine"
 path = "/backlog"
 `)
@@ -166,7 +169,7 @@ path = "/backlog"
 }
 
 func TestPathIsRequired(t *testing.T) {
-	_, problems := load(t, "spec = \"0.1\"\n\n[[tool.wikiview.board]]\nlane = \"priority\"\n")
+	_, problems := load(t, "spec = \"0.1\"\n\n[[board]]\nlane = \"priority\"\n")
 	if len(problems) != 1 || !strings.Contains(problems[0], "path is required") {
 		t.Errorf("problems=%v, want one about the missing path", problems)
 	}
@@ -218,11 +221,11 @@ func TestREADMEDocumentsTheRealDefaults(t *testing.T) {
 func TestTwoBoardsOverOneFolderNeedIds(t *testing.T) {
 	cfg, problems := load(t, `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id    = "all"
 path  = "/backlog"
 
-[[tool.wikiview.board]]
+[[board]]
 id    = "bugs"
 path  = "/backlog"
 where = ["type=task", "kind=bug"]
@@ -240,18 +243,29 @@ where = ["type=task", "kind=bug"]
 // then a board address would sometimes start with an id and sometimes with a
 // folder name.
 func TestIDIsRequired(t *testing.T) {
-	_, problems := load(t, "spec = \"0.1\"\n\n[[tool.wikiview.board]]\npath = \"/backlog\"\n")
+	_, problems := load(t, "spec = \"0.1\"\n\n[[board]]\npath = \"/backlog\"\n")
 	if len(problems) != 1 || !strings.Contains(problems[0], "id is required") {
 		t.Errorf("problems=%v, want one about the missing id", problems)
 	}
 }
 
-// An id sits in the URL among folder names, so a slash in one puts it back in
-// competition with them.
-func TestAnIDWithASlashIsReported(t *testing.T) {
-	_, problems := load(t, "spec = \"0.1\"\n\n[[tool.wikiview.board]]\nid = \"a/b\"\npath = \"/backlog\"\n")
-	if len(problems) != 1 || !strings.Contains(problems[0], "slash") {
-		t.Errorf("problems=%v, want one about the slash", problems)
+// An id sits in the URL among folder names, and the standard says what one
+// looks like. One that breaks the pattern is reported, and its board still
+// served: a problem never takes a board away.
+func TestAnIDOutsideThePatternIsReported(t *testing.T) {
+	for _, id := range []string{"a/b", "Bugs", "-x", "two words", "é"} {
+		cfg, problems := load(t, "spec = \"0.1\"\n\n[[board]]\nid = \""+id+"\"\npath = \"/backlog\"\n")
+		if len(problems) != 1 || !strings.Contains(problems[0], "is not a word") {
+			t.Errorf("id %q: problems=%v, want one saying it is not a word", id, problems)
+		}
+		if len(cfg.Board) != 1 {
+			t.Errorf("id %q: boards=%v, want it still served", id, cfg.Board)
+		}
+	}
+	for _, id := range []string{"bugs", "bugs-2", "b_1", "0x"} {
+		if _, problems := load(t, "spec = \"0.1\"\n\n[[board]]\nid = \""+id+"\"\npath = \"/backlog\"\n"); len(problems) != 0 {
+			t.Errorf("id %q: problems=%v, want none", id, problems)
+		}
 	}
 }
 
@@ -261,7 +275,7 @@ func TestAnIDWithASlashIsReported(t *testing.T) {
 func TestListValuedGroupingIsReported(t *testing.T) {
 	_, problems := load(t, `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id     = "backlog"
 path   = "/backlog"
 status = "tags"
@@ -282,7 +296,7 @@ lane   = "tags"
 func TestAScalarGroupingIsNotReported(t *testing.T) {
 	_, problems := load(t, `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id     = "backlog"
 path   = "/backlog"
 status = "status"
@@ -299,24 +313,24 @@ status = "status"
 func TestGraphsAreCheckedLikeBoards(t *testing.T) {
 	cfg, problems := load(t, `spec = "0.1"
 
-[[tool.wikiview.graph]]
+[[graph]]
 id    = "a"
 path  = "/backlog"
 where = ["this is not a filter"]
 lane  = "priority"
 
-[[tool.wikiview.graph]]
+[[graph]]
 id   = "a"
 path = "/nowhere"
 
-[[tool.wikiview.graph]]
+[[graph]]
 path = "/backlog"
 
-[[tool.wikiview.graph]]
+[[graph]]
 id = "x/y"
 path = "/backlog"
 
-[[tool.wikiview.graph]]
+[[graph]]
 id = "lost"
 `)
 	joined := strings.Join(problems, "\n")
@@ -326,7 +340,7 @@ id = "lost"
 		`id "a" is already graph 1`,        // a duplicate id
 		"graph /nowhere: no entries there", // a folder with nothing in it
 		"graph 3 (/backlog): id is required",
-		`graph 4: id "x/y" contains a slash`,
+		`graph 4: id "x/y" is not a word`,
 		"graph 5: path is required",
 	} {
 		if !strings.Contains(joined, want) {
@@ -344,11 +358,11 @@ id = "lost"
 func TestAGraphHasNoDefaultFilterAndItsOwnIDs(t *testing.T) {
 	cfg, problems := load(t, `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id   = "backlog"
 path = "/backlog"
 
-[[tool.wikiview.graph]]
+[[graph]]
 id   = "backlog"
 path = "/backlog"
 `)
@@ -365,7 +379,7 @@ path = "/backlog"
 func TestAnEmptyBoardFilterIsNotTheDefault(t *testing.T) {
 	cfg, problems := load(t, `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id    = "everything"
 path  = "/backlog"
 where = []

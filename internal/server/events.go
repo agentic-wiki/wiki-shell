@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/agentic-wiki/wiki-shell/internal/config"
 	"github.com/agentic-wiki/wiki-shell/internal/store"
 )
 
@@ -97,8 +98,36 @@ func (s *Server) RebuildAndNotify() error {
 	if err != nil {
 		return err
 	}
+	if changed && s.store.View().ConfigMoved {
+		if err := s.MigrateConfig(); err != nil {
+			return err
+		}
+	}
 	if changed {
 		s.Notify()
+	}
+	return nil
+}
+
+// MigrateConfig renames an older wiki's `[tool.wikiview]` tables to
+// `[[board]]` and `[[graph]]`, re-reads the bundle when it did, and names what
+// it could not move. Run at start and on each change of wiki.toml, so a table
+// an older app writes back is renamed again. A file it cannot write is
+// reported and left as it is: the config is optional, so serving goes on.
+func (s *Server) MigrateConfig() error {
+	renamed, err := config.Migrate(s.store.Dir)
+	if err != nil {
+		log.Printf("wiki.toml: could not rename the [tool.wikiview] tables to [[board]] and [[graph]]: %v", err)
+		return nil
+	}
+	if renamed {
+		log.Print("wikishell: renamed [tool.wikiview] tables in wiki.toml to [[board]] and [[graph]]")
+		if _, err := s.store.Rebuild(); err != nil {
+			return err
+		}
+	}
+	if left := config.LeftBehind(s.store.View().Index.Bundle); left != "" {
+		log.Printf("wiki.toml: %s", left)
 	}
 	return nil
 }

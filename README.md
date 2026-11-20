@@ -123,12 +123,14 @@ Boards are built: columns, lanes, drag by both at once, and a card sheet. So are
 
 ## Configuration
 
-Optional, and it lives in the bundle's own `wiki.toml` under `[tool.wikiview]`, alongside whatever else that file already holds. There is no second config file and nothing to create: a bundle with none of this serves every view.
+Optional, and it lives in the bundle's own `wiki.toml` as `[[board]]` and `[[graph]]` tables, alongside whatever else that file already holds. The agentic-wiki standard defines both, so every app that shows boards (Foreman too) reads the same tables, and `wiki` itself never reads inside them. There is no second config file and nothing to create: a bundle with none of this serves every view.
+
+**From an older wiki.** WikiShell up to v0.18.0 read `[tool.wikiview]`. When WikiShell opens a wiki, and whenever its `wiki.toml` changes, it renames `[[tool.wikiview.board]]` to `[[board]]` and `[[tool.wikiview.graph]]` to `[[graph]]` in place, and removes a `[tool.wikiview]` table left empty. Nothing else in the file changes, and it prints one line when it does this. Anything it can't move, such as a key in `[tool.wikiview]` itself, is no longer read, and the startup check names it.
 
 What it configures is boards and [graphs](#graphs). Every bundle already has one board — `/kanban/root`, the whole bundle — so this is for the others:
 
 ```toml
-[[tool.wikiview.board]]
+[[board]]
 id   = "backlog"
 path = "/backlog"
 ```
@@ -138,7 +140,7 @@ That is a whole board, reachable at `/kanban/backlog`. You do not have to type i
 The id is what the URL carries and what tells two boards apart; every other key has a default, and writing them out is only worth it when one is wrong:
 
 ```toml
-[[tool.wikiview.board]]
+[[board]]
 id       = "backlog"
 path     = "/backlog"
 name     = "Backlog"       # default: the folder, made readable
@@ -153,7 +155,7 @@ blockers = "blockers"      # default: the field naming what an entry waits on
 An array of tables rather than a list of paths, because every board has its own settings — and because **two boards can be over one folder**, which is the reason ids exist. Everything and just bugs, or the same tasks grouped by `priority` beside the same tasks grouped by `area`:
 
 ```toml
-[[tool.wikiview.board]]
+[[board]]
 id    = "bugs"
 path  = "/backlog"
 where = ["type=task", "kind=bug"]
@@ -161,7 +163,7 @@ where = ["type=task", "kind=bug"]
 
 `where` follows the same spelling as `wiki list --where status!=done`. A board holds tasks by default, but any filter works: `where = ["type=idea"]` is a board of ideas, and `where = []` is every entry under `path`. That last one is not the same as leaving `where` out, which brings back the `type=task` default.
 
-An id is a word, never a path: it is the first segment of a board's address, and everything after it is an entry, so `/kanban/backlog/3-reader/006-x.md` opens that card on that board. Ids are declared rather than derived, because a derived one would come from the path and then that first segment would sometimes be an id and sometimes a folder name.
+An id is a word, never a path: lowercase letters, digits, `_` and `-`, starting with a letter or a digit. One written any other way is reported at startup, and its board is still shown. It is the first segment of a board's address, and everything after it is an entry, so `/kanban/backlog/3-reader/006-x.md` opens that card on that board. Ids are declared rather than derived, because a derived one would come from the path and then that first segment would sometimes be an id and sometimes a folder name.
 
 **Order comes from the vocabulary first, and from you when you say so.** `status` and `priority` read the way they mean without being configured: `todo, in-progress, done` rather than alphabetical, and `high, medium, low` rather than `high, low, medium`. `severity` and `size` too. A field WikiShell does not recognise falls back to alphabetical, and `columns` or `lanes` replaces the order outright for any field at all. A value nothing in the table mentions still appears, after the ones that do.
 
@@ -172,7 +174,7 @@ An id is a word, never a path: it is the first segment of a board's address, and
 A graph draws a folder's entries and the links between them, reachable at `/graph/<id>`. Unlike boards, none is built in: every graph is declared. **New graph** in the Graphs panel declares one for you, through the same dialog boards use, and a graph's Settings change its name, filter and neighbours without opening this file.
 
 ```toml
-[[tool.wikiview.graph]]
+[[graph]]
 id         = "people"
 path       = "/people"
 where      = ["type=person"]  # default: none, every entry under path
@@ -228,7 +230,7 @@ POST /api/git/branch          push the current work to a new branch
 
 A write carries the `version` it was read at, and one that has moved is refused with `409` and the current version. `/api/card` takes the values a drop landed on, `{"value": "done", "lane": "high", "version": 7}`, and the board decides which frontmatter keys those stand for. Both are written in one pass, and an empty `lane` leaves that field alone rather than clearing it.
 
-`POST /api/board` takes `{"id": "bugs", "path": "/backlog", "name": "Bugs", "where": ["type=task"]}` and appends a `[[tool.wikiview.board]]` table, leaving the rest of the file alone. Leave `where` out to get the default; send `[]` for every entry under the path. The dialog gets its starting filter and the folder's keys from `GET /api/draft/{board|graph}/{folder}`, so the default is defined once, on the server. It refuses an id that is not a word, one already declared, a filter that does not parse, and a path that is not a folder in the bundle. A folder with no tasks in it yet is fine: the board starts empty and says what will fill it.
+`POST /api/board` takes `{"id": "bugs", "path": "/backlog", "name": "Bugs", "where": ["type=task"]}` and appends a `[[board]]` table, leaving the rest of the file alone. Leave `where` out to get the default; send `[]` for every entry under the path. The dialog gets its starting filter and the folder's keys from `GET /api/draft/{board|graph}/{folder}`, so the default is defined once, on the server. It refuses an id that is not a word, one already declared, a filter that does not parse, and a path that is not a folder in the bundle. A folder with no tasks in it yet is fine: the board starts empty and says what will fill it.
 
 `PUT /api/board/{id}` takes `name`, `where`, `status`, `columns`, `lane`, `lanes` and `blockers` together and rewrites those lines in that board's table. A setting sent empty is a key removed, except `where`: an empty one is written as `where = []`, because leaving the key out would bring the default back. `id` and `path` are not settings: they are what the board is, and changing an id breaks every link to it.
 

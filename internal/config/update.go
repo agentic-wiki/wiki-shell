@@ -65,6 +65,8 @@ func UpdateGraph(dir, id string, s GraphSettings) error {
 	if err := allWritable(append([]string{s.Name}, s.Where...)); err != nil {
 		return err
 	}
+	writing.Lock()
+	defer writing.Unlock()
 	path := filepath.Join(dir, "wiki.toml")
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -98,6 +100,8 @@ func Update(dir, id string, s Settings) error {
 		return err
 	}
 
+	writing.Lock()
+	defer writing.Unlock()
 	path := filepath.Join(dir, "wiki.toml")
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -122,16 +126,16 @@ func Update(dir, id string, s Settings) error {
 // span is a half-open range of lines: the body of one table, header excluded.
 type span struct{ from, to int }
 
-// findTable finds the body of the `[[tool.wikiview.<kind>]]` table declaring id.
+// findTable finds the body of the `[[<kind>]]` table declaring id.
 //
 // Line-based rather than parsed, because parsing is the thing that loses the
 // file. A table's body runs from its header to the next one, which is what makes
 // "leave every other byte alone" something this can actually promise.
 func findTable(lines []string, kind, id string) (span, bool) {
 	want := quote(id)
-	header := "[[tool." + tool + "." + kind + "]]"
+	head := header(kind)
 	for i, line := range lines {
-		if strings.TrimSpace(line) != header {
+		if !isHeader(line, head) {
 			continue
 		}
 		body := span{from: i + 1, to: len(lines)}
@@ -148,6 +152,14 @@ func findTable(lines []string, kind, id string) (span, bool) {
 		}
 	}
 	return span{}, false
+}
+
+// isHeader says whether line is the table header head, alone or followed by a
+// comment (`[[board]] # sprint`).
+func isHeader(line, head string) bool {
+	rest, ok := strings.CutPrefix(strings.TrimSpace(line), head)
+	rest = strings.TrimSpace(rest)
+	return ok && (rest == "" || strings.HasPrefix(rest, "#"))
 }
 
 // keyValue splits a `key = value` line, reporting whether it is one.
@@ -284,7 +296,7 @@ func declareRoot(path, raw string, s Settings) error {
 	if raw != "" && !strings.HasSuffix(raw, "\n") {
 		out.WriteString("\n")
 	}
-	fmt.Fprintf(&out, "\n[[tool.%s.board]]\n", tool)
+	fmt.Fprintf(&out, "\n%s\n", header("board"))
 	fmt.Fprintf(&out, "id   = %s\n", quote(RootID))
 	fmt.Fprintf(&out, "path = %s\n", quote("/"))
 	values := s.values()

@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"unicode"
 )
 
@@ -18,6 +19,10 @@ import (
 // reads one way. The rest is so an id survives being typed, pasted and read back
 // out of a URL unchanged.
 var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
+
+// header is the table header of a kind of view, as the standard spells it:
+// `[[board]]` or `[[graph]]`. Every writer and finder spells it through here.
+func header(kind string) string { return "[[" + kind + "]]" }
 
 // Declare appends a board to the bundle's wiki.toml.
 //
@@ -54,7 +59,7 @@ func DeclareGraph(dir string, existing Config, g Graph) error {
 	return declare(dir, "graph", taken, g.ID, g.Path, g.Name, g.Where, list(g.Where))
 }
 
-// declare appends one `[[tool.wikiview.<kind>]]` table naming a view over a
+// declare appends one `[[<kind>]]` table naming a view over a
 // folder. Every view is declared the same way, so there is one writer for it.
 // `rendered` is the filter as it is written, "" to leave the key out: whether
 // an empty filter is written is the kind's rule, not this writer's.
@@ -66,10 +71,17 @@ func declare(dir, kind string, taken []string, id, folder, name string, where []
 		return err
 	}
 
+	writing.Lock()
+	defer writing.Unlock()
 	path := filepath.Join(dir, "wiki.toml")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return err
+	}
+	// Checked again in the file as it is now: taken was read before the lock,
+	// and another write may have declared this id since.
+	if _, ok := findTable(strings.Split(string(raw), "\n"), kind, id); ok {
+		return alreadyDeclared(kind, id)
 	}
 
 	var out strings.Builder
@@ -77,7 +89,7 @@ func declare(dir, kind string, taken []string, id, folder, name string, where []
 	if len(raw) > 0 && !strings.HasSuffix(string(raw), "\n") {
 		out.WriteString("\n")
 	}
-	fmt.Fprintf(&out, "\n[[tool.%s.%s]]\n", tool, kind)
+	fmt.Fprintf(&out, "\n%s\n", header(kind))
 	fmt.Fprintf(&out, "id   = %s\n", quote(id))
 	fmt.Fprintf(&out, "path = %s\n", quote(folder))
 	if name != "" {
@@ -96,7 +108,7 @@ func validate(kind string, taken []string, id, path, name string) error {
 		return errors.New("an id is a word: lowercase letters, digits, '-' and '_', starting with a letter or digit")
 	}
 	if slices.Contains(taken, id) {
-		return fmt.Errorf("a %s with the id %q is already declared", kind, id)
+		return alreadyDeclared(kind, id)
 	}
 	if !strings.HasPrefix(path, "/") {
 		return fmt.Errorf("a %s path starts at the bundle root, like /backlog", kind)
@@ -133,16 +145,33 @@ func quote(s string) string {
 	return `"` + r.Replace(s) + `"`
 }
 
+func alreadyDeclared(kind, id string) error {
+	return fmt.Errorf("a %s with the id %q is already declared", kind, id)
+}
+
+// writing serialises every write to wiki.toml in this process: each one reads
+// the file, edits it and writes it back, so two at once (a migration and a new
+// board, two new boards) would lose one of them while both report success.
+// Held around the whole read, edit and write.
+var writing sync.Mutex
+
 // replace writes content over path atomically, keeping the file's permissions.
 //
 // A rename rather than a truncate-and-write, so a reader — `wiki`, an editor,
 // this server's own watcher — never sees a half-written config. Losing the
 // user's config to a crash mid-write is not a trade worth making to save a
 // temporary file.
+//
+// Only a regular file is written. A symlinked wiki.toml (a repo can ship one
+// pointing outside it) would be replaced by a plain copy, and the real file
+// would silently stop changing, so it is refused instead.
 func replace(path, content string) error {
 	dir := filepath.Dir(path)
 	perm := os.FileMode(0o644)
-	if fi, err := os.Stat(path); err == nil {
+	if fi, err := os.Lstat(path); err == nil {
+		if !fi.Mode().IsRegular() {
+			return fmt.Errorf("%s is not a regular file (a symlink?), so it is left as it is", filepath.Base(path))
+		}
 		perm = fi.Mode().Perm()
 	}
 

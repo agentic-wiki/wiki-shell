@@ -16,7 +16,7 @@ const handWritten = `spec = "0.1"
 
 types = ["task", "note"]
 
-[[tool.wikiview.board]]
+[[board]]
 id   = "backlog"
 path = "/backlog"
 `
@@ -53,7 +53,7 @@ func TestDeclareAppends(t *testing.T) {
 	if !strings.HasPrefix(got, handWritten) {
 		t.Errorf("the file was not left intact ahead of the new table:\n%s", got)
 	}
-	if !strings.HasSuffix(got, "\n[[tool.wikiview.board]]\nid   = \"bugs\"\npath = \"/backlog\"\nname = \"Bugs\"\n") {
+	if !strings.HasSuffix(got, "\n[[board]]\nid   = \"bugs\"\npath = \"/backlog\"\nname = \"Bugs\"\n") {
 		t.Errorf("appended table = %q", got)
 	}
 
@@ -83,7 +83,7 @@ func TestDeclareWritesOnlyWhatWasAskedFor(t *testing.T) {
 		}
 	}
 	// A file with no trailing newline still gets a well-formed table after it.
-	if !strings.Contains(got, "\n\n[[tool.wikiview.board]]\n") {
+	if !strings.Contains(got, "\n\n[[board]]\n") {
 		t.Errorf("the table ran into the line above it:\n%q", got)
 	}
 }

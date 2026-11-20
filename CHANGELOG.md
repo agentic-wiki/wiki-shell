@@ -2,6 +2,17 @@
 
 All notable changes to WikiShell are documented here. This project follows [semantic versioning](https://semver.org); while pre-1.0, breaking changes bump the minor version.
 
+## v0.19.0
+
+### Breaking
+
+- **Boards and graphs move to the standard's `[[board]]` and `[[graph]]` tables** in `wiki.toml`, which Foreman reads too. `[tool.wikiview]` is no longer read. Upgrade Foreman along with WikiShell: an older Foreman shows no boards once the file is renamed. This needs `wiki` v0.18.0.
+- **Old wikis are renamed on open.** When WikiShell opens a wiki, and whenever its `wiki.toml` changes, it renames `[[tool.wikiview.board]]` to `[[board]]` and `[[tool.wikiview.graph]]` to `[[graph]]` in place, and removes a `[tool.wikiview]` table left empty. Nothing else in the file changes, and it prints `wikishell: renamed [tool.wikiview] tables in wiki.toml to [[board]] and [[graph]]`. A file that already has `[[board]]` tables is renamed too, and the tables join, so a table an older app writes back is picked up again. What can't be moved, such as a key in `[tool.wikiview]` itself, is reported at startup and no longer read. So is a file that can't be written.
+
+### Changed
+
+- **An id must follow the standard's pattern:** lowercase letters, digits, `_` and `-`, starting with a letter or a digit. One that doesn't is reported at startup, and its board or graph is still shown. Before, only a slash was reported.
+
 ## v0.18.0
 
 ### Breaking

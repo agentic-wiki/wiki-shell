@@ -13,10 +13,10 @@ import (
 // Reads, a write and a rebuild at once, which is what a bundle an agent is
 // editing looks like from here.
 //
-// `bundle.DecodeTool` decodes through a `toml.MetaData` that records what it has
-// read, so it writes to the thing it reads from: two handlers decoding one
-// bundle took the process down with "concurrent map writes". Not theoretical —
-// it killed a server with a board open while the tree refetched beside it.
+// Decoding wiki.toml writes to the metadata it reads from, so two handlers
+// decoding one bundle without a lock end the process with "concurrent map
+// writes". The lock is the engine's (`bundle`), around every decode; this
+// test, run with -race, is what notices if it goes.
 func TestConcurrentRequestsAndRebuilds(t *testing.T) {
 	srv := newBoardServer(t, declaredBoard)
 

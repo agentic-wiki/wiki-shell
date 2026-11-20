@@ -1,6 +1,9 @@
-// Package config reads WikiShell's own section of the bundle's wiki.toml.
+// Package config reads the boards and graphs a bundle's wiki.toml declares.
 //
-// Everything here is optional. A bundle with no `[tool.wikiview]` serves every
+// The standard defines `[[board]]` and `[[graph]]` for the apps that show
+// them; `wiki` sets them aside and never reads inside them.
+//
+// Everything here is optional. A bundle with neither serves every
 // view correctly: the reader needs no configuration, and a board infers its
 // columns from the entries in the folder. Config exists for what inference gets
 // wrong, not for what it gets right.
@@ -10,15 +13,10 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/agentic-wiki/wiki/bundle"
 	"github.com/agentic-wiki/wiki/index"
 )
-
-// tool is this app's key under `[tool]` in wiki.toml: every table it reads
-// and writes is `[tool.wikiview]` or below it.
-const tool = "wikiview"
 
 // Board is one declared board.
 //
@@ -26,7 +24,7 @@ const tool = "wikiview"
 // per board: two backlogs in one bundle can legitimately use different status
 // vocabularies, and `backlogs = [...]` cannot carry that.
 //
-//	[[tool.wikiview.board]]
+//	[[board]]
 //	path    = "/backlog"
 //	where   = ["type=task"]                              # default; [] is every entry
 //	status  = "status"                                   # default
@@ -86,7 +84,7 @@ type Board struct {
 // Graph is one declared graph: the entries under a folder, and the links
 // between them.
 //
-//	[[tool.wikiview.graph]]
+//	[[graph]]
 //	id         = "people"
 //	path       = "/people"
 //	where      = ["type=person"]  # default: none, every entry under path
@@ -110,8 +108,8 @@ type Graph struct {
 }
 
 type Config struct {
-	Board []Board `toml:"board" json:"board,omitempty"`
-	Graph []Graph `toml:"graph" json:"graph,omitempty"`
+	Board []Board `json:"board,omitempty"`
+	Graph []Graph `json:"graph,omitempty"`
 }
 
 // Defaults applied to a board that leaves a key out. A backlog is tasks with a
@@ -162,7 +160,8 @@ func Defaults(b Board) Board {
 	return b
 }
 
-// Decode reads `[tool.wikiview]` and reports what is wrong with it.
+// Decode reads the `[[board]]` and `[[graph]]` tables and reports what is
+// wrong with them.
 //
 // A problem is not an error. A board pointing at a folder somebody deleted, or
 // a filter with a typo in it, must not stop the bundle being served — the
@@ -170,22 +169,23 @@ func Defaults(b Board) Board {
 // preference would be the wrong trade. The problems are reported and the rest
 // of the config stands.
 //
-// Validation lives here rather than in `wiki check` because the whole point of
-// `[tool.*]` is that the engine never parses inside it. The moment it validated
-// one tool's keys it would hold an opinion about that tool.
+// Validation lives here rather than in `wiki check` because the standard keeps
+// `wiki` passive: it never reads inside these tables, so the apps that show
+// them are the ones that report on them.
 func Decode(b *bundle.Bundle, idx *index.Index) (Config, []string) {
 	var problems []string
-
-	// Decoded twice: once loosely to see what keys are actually written, once
-	// into the real shape. The loose pass is the only way to catch a misspelled
-	// key, which otherwise decodes into nothing and is silently ignored — the
-	// same footgun the engine surfaces for its own keys.
-	var loose map[string]any
 	var cfg Config
-	if err := decodeTool(b, &loose, &cfg); err != nil {
-		return Config{}, []string{err.Error()}
+	var looseBoards, looseGraphs []map[string]any
+	if err := decode(b.DecodeBoards, &looseBoards, &cfg.Board); err != nil {
+		problems = append(problems, err.Error())
+		cfg.Board, looseBoards = nil, nil
 	}
-	problems = append(problems, unknownKeys(loose)...)
+	if err := decode(b.DecodeGraphs, &looseGraphs, &cfg.Graph); err != nil {
+		problems = append(problems, err.Error())
+		cfg.Graph, looseGraphs = nil, nil
+	}
+	problems = append(problems, unknownKeys("board", looseBoards)...)
+	problems = append(problems, unknownKeys("graph", looseGraphs)...)
 
 	// The id identifies a board, so two claiming one is a config that cannot
 	// mean what it says: the second is unreachable, and silently taking the
@@ -203,9 +203,8 @@ func Decode(b *bundle.Bundle, idx *index.Index) (Config, []string) {
 			problems = append(problems, fmt.Sprintf("board %d (%s): id is required", i+1, board.Path))
 			continue
 		}
-		if strings.Contains(board.ID, "/") {
-			problems = append(problems, fmt.Sprintf(
-				"board %d: id %q contains a slash, and an id is a word rather than a path", i+1, board.ID))
+		if !idPattern.MatchString(board.ID) {
+			problems = append(problems, fmt.Sprintf("board %d: id %q %s", i+1, board.ID, notAWord))
 		}
 		if first, ok := seen[board.ID]; ok {
 			problems = append(problems, fmt.Sprintf(
@@ -266,9 +265,8 @@ func checkGraphs(graphs []Graph, idx *index.Index) []string {
 			problems = append(problems, fmt.Sprintf("graph %d (%s): id is required", i+1, g.Path))
 			continue
 		}
-		if strings.Contains(g.ID, "/") {
-			problems = append(problems, fmt.Sprintf(
-				"graph %d: id %q contains a slash, and an id is a word rather than a path", i+1, g.ID))
+		if !idPattern.MatchString(g.ID) {
+			problems = append(problems, fmt.Sprintf("graph %d: id %q %s", i+1, g.ID, notAWord))
 		}
 		if first, ok := seen[g.ID]; ok {
 			problems = append(problems, fmt.Sprintf(
@@ -291,30 +289,20 @@ func checkGraphs(graphs []Graph, idx *index.Index) []string {
 	return problems
 }
 
-// decoding serialises the engine's TOML decoder.
-//
-// `bundle.DecodeTool` decodes through a `toml.MetaData` that records what it has
-// read as it goes, so it writes to the very thing it is reading from. Two
-// requests decoding one bundle at the same moment is a concurrent map write,
-// which is not a race the runtime tolerates: it takes the process down. That is
-// not theoretical — it killed a server with a board open while the tree
-// refetched beside it.
-//
-// A lock rather than a copy of the bundle, because the unsafety belongs to
-// decoding and this is the only place that does it. Held across both passes and
-// nothing else: the checks below walk the index, which is read-only and wants no
-// lock at all.
-var decoding sync.Mutex
-
-func decodeTool(b *bundle.Bundle, loose *map[string]any, cfg *Config) error {
-	decoding.Lock()
-	defer decoding.Unlock()
-	if _, err := b.DecodeTool(tool, loose); err != nil {
+// decode reads one kind of table twice: loosely, to see the keys actually
+// written, then into its shape. The loose pass is the only way to catch a
+// misspelled key, which otherwise decodes into nothing and is silently
+// ignored.
+func decode(read func(v any) (bool, error), loose *[]map[string]any, typed any) error {
+	if _, err := read(loose); err != nil {
 		return err
 	}
-	_, err := b.DecodeTool(tool, cfg)
+	_, err := read(typed)
 	return err
 }
+
+// notAWord says what an id must look like, the standard's pattern (idPattern).
+const notAWord = "is not a word: use lowercase letters, digits, _ and -, starting with a letter or a digit"
 
 // IsList reports whether a frontmatter key holds a list anywhere in scope.
 //
@@ -331,7 +319,6 @@ func IsList(entries []*index.Entry, key string) bool {
 
 // known keys, so a misspelling is reported rather than ignored.
 var (
-	topKeys   = map[string]bool{"board": true, "graph": true}
 	boardKeys = map[string]bool{
 		"path": true, "id": true, "name": true, "where": true, "status": true, "columns": true,
 		"lane": true, "lanes": true, "blockers": true,
@@ -340,19 +327,12 @@ var (
 	tableKeys = map[string]map[string]bool{"board": boardKeys, "graph": graphKeys}
 )
 
-func unknownKeys(loose map[string]any) []string {
+func unknownKeys(kind string, tables []map[string]any) []string {
 	var out []string
-	for key, value := range loose {
-		if !topKeys[key] {
-			out = append(out, fmt.Sprintf("unknown key [tool.%s] %s", tool, key))
-			continue
-		}
-		tables, _ := value.([]map[string]any)
-		for i, table := range tables {
-			for k := range table {
-				if !tableKeys[key][k] {
-					out = append(out, fmt.Sprintf("unknown key in %s %d: %s", key, i+1, k))
-				}
+	for i, table := range tables {
+		for k := range table {
+			if !tableKeys[kind][k] {
+				out = append(out, fmt.Sprintf("unknown key in %s %d: %s", kind, i+1, k))
 			}
 		}
 	}

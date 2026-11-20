@@ -121,6 +121,9 @@ func run(opts options) error {
 	}
 	port := ln.Addr().(*net.TCPAddr).Port
 	srv := server.New(s, ui.Assets(), opts.host, port)
+	if err := srv.MigrateConfig(); err != nil {
+		return err
+	}
 	idx := s.View().Index
 	// The address to open. On a network bind it is the one place the token is
 	// printed, in the fragment, so it never reaches this server, a request log
@@ -128,7 +131,7 @@ func run(opts options) error {
 	log.Printf("serving %s (%d entries)", s.Dir, len(idx.Entries))
 	log.Printf("open %s", srv.URL())
 
-	// `wiki` never looks inside `[tool.*]`, deliberately, so nothing else will
+	// `wiki` never looks inside `[[board]]` and `[[graph]]`, deliberately, so nothing else will
 	// ever tell you that a board points at a folder you renamed or that a key is
 	// misspelled. Said once, at startup, and never fatal: this config is
 	// optional, and the reader does not need it to work.

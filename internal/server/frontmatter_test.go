@@ -84,17 +84,17 @@ func TestUnreadEntriesAreListedNotCarded(t *testing.T) {
 	srv, _ := bundleServer(t, map[string]string{
 		"wiki.toml": `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id    = "tasks"
 path  = "/backlog"
 where = ["type=task"]
 
-[[tool.wikiview.board]]
+[[board]]
 id    = "all"
 path  = "/backlog"
 where = []
 
-[[tool.wikiview.board]]
+[[board]]
 id   = "notes"
 path = "/notes"
 `,
@@ -130,7 +130,7 @@ func TestRefusedCardMoveLeavesTheFile(t *testing.T) {
 	srv, _ := bundleServer(t, map[string]string{
 		"wiki.toml": `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id   = "backlog"
 path = "/backlog"
 `,
@@ -192,7 +192,7 @@ func TestEmptyTagsAreDropped(t *testing.T) {
 	srv, _ := bundleServer(t, map[string]string{
 		"wiki.toml": `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id    = "backlog"
 path  = "/backlog"
 where = []
@@ -223,7 +223,7 @@ func TestFailedCardWriteIsA500(t *testing.T) {
 	srv, _, dir := bundleServerIn(t, map[string]string{
 		"wiki.toml": `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id   = "backlog"
 path = "/backlog"
 `,

@@ -48,7 +48,7 @@ func newBoardServer(t *testing.T, toml string) *Server {
 
 const declaredBoard = `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id      = "backlog"
 path    = "/backlog"
 columns = ["todo", "in-progress", "done"]
@@ -221,7 +221,7 @@ func TestBoardsAreNamedWithoutBeingTold(t *testing.T) {
 	// And the config wins when the derived one is wrong.
 	named := newBoardServer(t, `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id   = "backlog"
 path = "/backlog"
 name = "This Quarter"
@@ -237,10 +237,10 @@ name = "This Quarter"
 func TestABoardWithNoIDIsNotOffered(t *testing.T) {
 	srv := newBoardServer(t, `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 path = "/backlog"
 
-[[tool.wikiview.board]]
+[[board]]
 id   = "fine"
 path = "/backlog"
 `)
@@ -259,7 +259,7 @@ path = "/backlog"
 func TestABoardOverNothingHasNoColumnsRatherThanNull(t *testing.T) {
 	srv := newBoardServer(t, `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id    = "none"
 path  = "/backlog"
 where = ["type=task", "kind=nothing-matches-this"]
@@ -419,7 +419,7 @@ func TestCardsCountBlockerEdges(t *testing.T) {
 func TestBlockerFieldIsConfigurable(t *testing.T) {
 	srv := newBoardServer(t, `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id       = "backlog"
 path     = "/backlog"
 blockers = "waits_on"
@@ -451,7 +451,7 @@ blockers = "waits_on"
 func TestKnownVocabulariesOrderThemselves(t *testing.T) {
 	srv := newBoardServer(t, `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id   = "backlog"
 path = "/backlog"
 lane = "priority"
@@ -491,7 +491,7 @@ lane = "priority"
 func TestDeclaredOrderWinsAndUnknownValuesSurvive(t *testing.T) {
 	srv := newBoardServer(t, `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id    = "backlog"
 path  = "/backlog"
 lane  = "priority"

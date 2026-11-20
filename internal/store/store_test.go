@@ -321,7 +321,7 @@ func TestVersionMovesWhenTheConfigChanges(t *testing.T) {
 	}
 	before := s.View().Version
 
-	write(t, dir, "wiki.toml", "spec = \"0.1\"\n\n[[tool.wikiview.board]]\nid = \"notes\"\npath = \"/notes\"\n")
+	write(t, dir, "wiki.toml", "spec = \"0.1\"\n\n[[board]]\nid = \"notes\"\npath = \"/notes\"\n")
 	changed, err := s.Rebuild()
 	if err != nil {
 		t.Fatal(err)
@@ -412,7 +412,7 @@ func TestRebuildSaysWhenTheConfigMoved(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	write(t, dir, "wiki.toml", "spec = \"0.1\"\n\n[[tool.wikiview.board]]\nid = \"n\"\npath = \"/notes\"\n")
+	write(t, dir, "wiki.toml", "spec = \"0.1\"\n\n[[board]]\nid = \"n\"\npath = \"/notes\"\n")
 	if changed, err := s.Rebuild(); err != nil || !changed {
 		t.Fatalf("rebuild after a config edit: changed=%v err=%v", changed, err)
 	}

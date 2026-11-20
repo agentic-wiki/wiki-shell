@@ -94,7 +94,7 @@ func TestMoveCardWritesTheBoardsStatusField(t *testing.T) {
 func TestMoveCardWritesWhateverTheBoardCallsStatus(t *testing.T) {
 	srv := newBoardServer(t, `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id     = "backlog"
 path   = "/backlog"
 status = "stage"
@@ -277,7 +277,7 @@ types = ["task", "note"]
 	if !strings.Contains(got, "# A comment the user wrote") || !strings.Contains(got, `types = ["task", "note"]`) {
 		t.Errorf("the file was rewritten rather than appended to: %q", got)
 	}
-	for _, want := range []string{"[[tool.wikiview.board]]", `id   = "bugs"`, `path = "/backlog"`, `name = "Bugs"`} {
+	for _, want := range []string{"[[board]]", `id   = "bugs"`, `path = "/backlog"`, `name = "Bugs"`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("wiki.toml is missing %q: %q", want, got)
 		}
@@ -404,7 +404,7 @@ func TestBoardSettingsAreWritten(t *testing.T) {
 func TestInferredColumnsAreNotPinned(t *testing.T) {
 	srv := newBoardServer(t, `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id   = "backlog"
 path = "/backlog"
 `)
@@ -519,7 +519,7 @@ func TestMoveCardWithoutALaneLeavesItAlone(t *testing.T) {
 func TestMoveCardRefusesALaneOnABoardWithNone(t *testing.T) {
 	srv := newBoardServer(t, `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id   = "backlog"
 path = "/backlog"
 `)

@@ -54,7 +54,7 @@ func newGraphServer(t *testing.T, toml string) *Server {
 }
 
 func graphTOML(extra string) string {
-	return "spec = \"0.1\"\n\n[[tool.wikiview.graph]]\nid = \"people\"\npath = \"/people\"\n" + extra
+	return "spec = \"0.1\"\n\n[[graph]]\nid = \"people\"\npath = \"/people\"\n" + extra
 }
 
 func fetchGraph(t *testing.T, srv *Server, id string) GraphView {
@@ -196,7 +196,7 @@ func TestAGraphNobodyDeclaredIsNotFound(t *testing.T) {
 // would be the whole bundle, because an empty prefix is how the index spells
 // that.
 func TestAGraphWithoutAPathIsNotServed(t *testing.T) {
-	srv := newGraphServer(t, "spec = \"0.1\"\n\n[[tool.wikiview.graph]]\nid = \"all\"\n")
+	srv := newGraphServer(t, "spec = \"0.1\"\n\n[[graph]]\nid = \"all\"\n")
 	if code := get(t, srv, "/api/graph/all", nil); code != http.StatusNotFound {
 		t.Errorf("GET /api/graph/all = %d, want 404", code)
 	}
@@ -211,8 +211,8 @@ func TestAGraphWithoutAPathIsNotServed(t *testing.T) {
 // the boards': a board and a graph may both be called people.
 func TestTheBundleListsItsGraphs(t *testing.T) {
 	srv := newGraphServer(t, graphTOML("name = \"Who knows whom\"\n")+
-		"\n[[tool.wikiview.graph]]\nid = \"orgs\"\npath = \"/orgs\"\n"+
-		"\n[[tool.wikiview.board]]\nid = \"people\"\npath = \"/people\"\n")
+		"\n[[graph]]\nid = \"orgs\"\npath = \"/orgs\"\n"+
+		"\n[[board]]\nid = \"people\"\npath = \"/people\"\n")
 	var b BundleInfo
 	get(t, srv, "/api/bundle", &b)
 	var names []string
@@ -251,7 +251,7 @@ func TestDeclareGraphAppendsToWikiToml(t *testing.T) {
 		t.Errorf("version did not move: %d", after)
 	}
 	got := raw(t, srv, "wiki.toml")
-	for _, want := range []string{"# the user's comment", "[[tool.wikiview.graph]]", `id   = "people"`, `path = "/people"`, `name = "People I know"`} {
+	for _, want := range []string{"# the user's comment", "[[graph]]", `id   = "people"`, `path = "/people"`, `name = "People I know"`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("wiki.toml is missing %q: %q", want, got)
 		}
@@ -310,7 +310,7 @@ func TestDeclareGraphRefusesWhatCannotBeAddressed(t *testing.T) {
 // A board's id is not a graph's: declaring a graph called what a board is
 // called is allowed, and leaves the board what it was.
 func TestAGraphMayTakeABoardsID(t *testing.T) {
-	srv := newGraphServer(t, "spec = \"0.1\"\n\n[[tool.wikiview.board]]\nid = \"people\"\npath = \"/people\"\nwhere = []\n")
+	srv := newGraphServer(t, "spec = \"0.1\"\n\n[[board]]\nid = \"people\"\npath = \"/people\"\nwhere = []\n")
 	if code, _ := post(t, srv, "/api/graph", declareRequest{ID: "people", Path: "/orgs"}); code != http.StatusOK {
 		t.Fatalf("POST = %d, want 200", code)
 	}
@@ -374,13 +374,13 @@ func TestGraphSettingsRefuseWhatCannotBeMeant(t *testing.T) {
 // Updating one table of a kind must not find the other kind's table of the same
 // id: a board and a graph called people are two different lines to edit.
 func TestGraphSettingsLeaveTheSameIDsBoardAlone(t *testing.T) {
-	srv := newGraphServer(t, "spec = \"0.1\"\n\n[[tool.wikiview.board]]\nid = \"people\"\npath = \"/people\"\n\n"+
-		"[[tool.wikiview.graph]]\nid = \"people\"\npath = \"/people\"\n")
+	srv := newGraphServer(t, "spec = \"0.1\"\n\n[[board]]\nid = \"people\"\npath = \"/people\"\n\n"+
+		"[[graph]]\nid = \"people\"\npath = \"/people\"\n")
 	if code, _ := put(t, srv, "/api/graph/people", config.GraphSettings{Name: "Graph"}); code != http.StatusOK {
 		t.Fatalf("PUT = %d", code)
 	}
 	got := raw(t, srv, "wiki.toml")
-	board, graph, _ := strings.Cut(got, "[[tool.wikiview.graph]]")
+	board, graph, _ := strings.Cut(got, "[[graph]]")
 	if strings.Contains(board, "name") || !strings.Contains(graph, `name = "Graph"`) {
 		t.Errorf("the edit landed in the wrong table: %q", got)
 	}
@@ -390,7 +390,7 @@ func TestGraphSettingsLeaveTheSameIDsBoardAlone(t *testing.T) {
 // index.md is a node named for the bundle, a folder's for its folder, and a
 // title still wins, because the UI shows a title before any label.
 func TestAnIndexNodeIsNamedForItsFolder(t *testing.T) {
-	srv := newGraphServer(t, "spec = \"0.1\"\n\n[[tool.wikiview.graph]]\nid = \"all\"\npath = \"/\"\n")
+	srv := newGraphServer(t, "spec = \"0.1\"\n\n[[graph]]\nid = \"all\"\npath = \"/\"\n")
 	for name, content := range map[string]string{
 		"orgs/index.md":   "---\ntype: index\n---\n[Acme](./acme.md)\n",
 		"orgs/log.md":     "Acme signed. [Acme](./acme.md)\n",

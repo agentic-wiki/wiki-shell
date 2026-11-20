@@ -13,13 +13,13 @@ const twoBoards = `spec = "0.1"
 [tool.other]
 setting = "left alone"
 
-[[tool.wikiview.board]]
+[[board]]
 id      = "backlog"
 path    = "/backlog"
 status  = "status"
 columns = ["todo", "done"]
 
-[[tool.wikiview.board]]
+[[board]]
 id   = "bugs"
 path = "/backlog"
 `
@@ -91,7 +91,7 @@ func TestUpdateAddsAKeyToTheRightTable(t *testing.T) {
 	// below them, which parses the same and reads like it belongs to the table
 	// underneath. And lined up the way the table already was, since disturbing
 	// the file is the one thing this writer is for not doing.
-	want := "path    = \"/backlog\"\nwhere   = [\"type=task\", \"kind=bug\"]\nlane    = \"priority\"\n\n[[tool.wikiview.board]]"
+	want := "path    = \"/backlog\"\nwhere   = [\"type=task\", \"kind=bug\"]\nlane    = \"priority\"\n\n[[board]]"
 	if got := read(t, dir); !strings.Contains(got, want) {
 		t.Errorf("the new keys are not at the end of the table, lined up with it:\n%s", got)
 	}
@@ -101,7 +101,7 @@ func TestUpdateAddsAKeyToTheRightTable(t *testing.T) {
 func TestUpdateDoesNotInventAlignment(t *testing.T) {
 	dir := declared(t, `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id = "backlog"
 path = "/backlog"
 `)
@@ -138,7 +138,7 @@ func TestUpdateRemovesWhatIsCleared(t *testing.T) {
 func TestUpdateRefusesAMultiLineValue(t *testing.T) {
 	dir := declared(t, `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id = "backlog"
 path = "/backlog"
 columns = [
@@ -264,7 +264,7 @@ func TestComplete(t *testing.T) {
 // table it finds.
 func TestUpdateGraphEditsOnlyItsOwnTable(t *testing.T) {
 	dir := declared(t, twoBoards+`
-[[tool.wikiview.graph]]
+[[graph]]
 id    = "backlog"
 path  = "/backlog"
 where = ["type=task"]
@@ -273,7 +273,7 @@ where = ["type=task"]
 		t.Fatal(err)
 	}
 	got := read(t, dir)
-	boards, graph, _ := strings.Cut(got, "[[tool.wikiview.graph]]")
+	boards, graph, _ := strings.Cut(got, "[[graph]]")
 	if boards != twoBoards+"\n" {
 		t.Errorf("the boards were touched:\n%s", boards)
 	}
@@ -289,7 +289,7 @@ where = ["type=task"]
 }
 
 func TestUpdateGraphRefusesWhatItCannotEdit(t *testing.T) {
-	dir := declared(t, "spec = \"0.1\"\n\n[[tool.wikiview.graph]]\nid = \"g\"\npath = \"/backlog\"\nwhere = [\n  \"type=task\",\n]\n")
+	dir := declared(t, "spec = \"0.1\"\n\n[[graph]]\nid = \"g\"\npath = \"/backlog\"\nwhere = [\n  \"type=task\",\n]\n")
 	before := read(t, dir)
 	err := UpdateGraph(dir, "g", GraphSettings{})
 	if err == nil || !strings.Contains(err.Error(), "graph's") {
@@ -312,7 +312,7 @@ func TestUpdateGraphRefusesWhatItCannotEdit(t *testing.T) {
 func TestUpdateWritesAClearedBoardFilter(t *testing.T) {
 	dir := declared(t, `spec = "0.1"
 
-[[tool.wikiview.board]]
+[[board]]
 id    = "backlog"
 path  = "/backlog"
 where = ["type=task"]
@@ -341,7 +341,7 @@ where = ["type=task"]
 func TestUpdateGraphLeavesAClearedFilterOut(t *testing.T) {
 	dir := declared(t, `spec = "0.1"
 
-[[tool.wikiview.graph]]
+[[graph]]
 id    = "g"
 path  = "/"
 where = ["type=note"]
@@ -351,5 +351,21 @@ where = ["type=note"]
 	}
 	if got := read(t, dir); strings.Contains(got, "where") {
 		t.Errorf("wiki.toml = %q", got)
+	}
+}
+
+// A header may carry a comment, and the migration keeps one: the table is
+// still found, and the comment stays.
+func TestUpdateFindsAHeaderWithAComment(t *testing.T) {
+	dir := declared(t, "spec = \"0.1\"\n\n[[board]] # sprint\nid   = \"sprint\"\npath = \"/backlog\"\n\n[[graph]]  # the map\nid   = \"map\"\npath = \"/\"\n")
+	if err := Update(dir, "sprint", Settings{Name: "Sprint"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateGraph(dir, "map", GraphSettings{Name: "Map"}); err != nil {
+		t.Fatal(err)
+	}
+	want := "spec = \"0.1\"\n\n[[board]] # sprint\nid   = \"sprint\"\npath = \"/backlog\"\nname = \"Sprint\"\nwhere = []\n\n[[graph]]  # the map\nid   = \"map\"\npath = \"/\"\nname = \"Map\"\n"
+	if got := read(t, dir); got != want {
+		t.Errorf("wiki.toml:\n%q\nwant:\n%q", got, want)
 	}
 }

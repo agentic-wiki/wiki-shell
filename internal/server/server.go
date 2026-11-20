@@ -129,7 +129,7 @@ type BundleInfo struct {
 	Entries int      `json:"entries"`
 	Tools   []string `json:"tools"`   // [tool.*] tables present in wiki.toml
 	Version uint64   `json:"version"` // matches the SSE stream; compare to know you are stale
-	// Boards are the boards declared in `[tool.wikiview]`, with their defaults
+	// Boards are the boards declared in `[[board]]`, with their defaults
 	// filled in. Only the ones with an id, since an id is what a board is
 	// addressed by and listing one without an address offers a dead link.
 	Boards []BoardInfo `json:"boards,omitempty"`

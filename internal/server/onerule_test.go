@@ -56,7 +56,7 @@ func TestAssetsByTheOneRule(t *testing.T) {
 // rule, wherever it is named: its page, the tree, a card and a graph node.
 func TestUntitledEntriesShowTheirHeading(t *testing.T) {
 	srv, _ := bundleServer(t, map[string]string{
-		"wiki.toml": "spec = \"0.1\"\n\n[[tool.wikiview.board]]\nid = \"b\"\npath = \"/\"\nwhere = []\n\n[[tool.wikiview.graph]]\nid = \"g\"\npath = \"/\"\n",
+		"wiki.toml": "spec = \"0.1\"\n\n[[board]]\nid = \"b\"\npath = \"/\"\nwhere = []\n\n[[graph]]\nid = \"g\"\npath = \"/\"\n",
 		"plain.md":  "---\ntype: note\n---\n# The Heading\n",
 	})
 	var e EntryView
@@ -96,7 +96,7 @@ func TestUntitledEntriesShowTheirHeading(t *testing.T) {
 // makes a blocker on a board and an edge on a graph.
 func TestRefsWithAnAnchor(t *testing.T) {
 	srv, _ := bundleServer(t, map[string]string{
-		"wiki.toml": "spec = \"0.1\"\n\n[[tool.wikiview.board]]\nid = \"b\"\npath = \"/\"\n\n[[tool.wikiview.graph]]\nid = \"g\"\npath = \"/\"\n",
+		"wiki.toml": "spec = \"0.1\"\n\n[[board]]\nid = \"b\"\npath = \"/\"\n\n[[graph]]\nid = \"g\"\npath = \"/\"\n",
 		"a.md":      "---\ntype: task\nstatus: todo\nblockers: [./b.md#step-2]\n---\n",
 		"b.md":      "---\ntype: task\nstatus: todo\n---\n# B\n## Step 2\n",
 	})

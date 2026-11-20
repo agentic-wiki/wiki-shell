@@ -26,7 +26,7 @@ func newTestServer(t *testing.T) *Server {
 			t.Fatal(err)
 		}
 	}
-	write("wiki.toml", "spec = \"0.1\"\n\n[tool.wikiview]\ndefault_board = \"/\"\n")
+	write("wiki.toml", "spec = \"0.1\"\n\n[tool.other]\nsetting = \"x\"\n")
 	write("index.md", "---\nokf_version: \"0.1\"\n---\nhome [a](./notes/a.md)\n")
 	// Its title deliberately says something its filename does not, so the two
 	// names an entry can have stay distinguishable in every assertion below.
@@ -103,8 +103,8 @@ func TestBundleEndpoint(t *testing.T) {
 	}
 	// The [tool.*] tables are reported so a client knows what config exists,
 	// without wiki having interpreted any of it.
-	if len(got.Tools) != 1 || got.Tools[0] != "wikiview" {
-		t.Errorf("tools=%v, want [wikiview]", got.Tools)
+	if len(got.Tools) != 1 || got.Tools[0] != "other" {
+		t.Errorf("tools=%v, want [other]", got.Tools)
 	}
 }
 
@@ -252,10 +252,10 @@ func TestBundleTagsAreAListWhenThereAreNone(t *testing.T) {
 func TestBundleCountsEachViewsEntries(t *testing.T) {
 	srv, _ := bundleServer(t, map[string]string{
 		"wiki.toml": "spec = \"0.1\"\n" +
-			"\n[[tool.wikiview.board]]\nid = \"work\"\npath = \"/work\"\n" +
-			"\n[[tool.wikiview.board]]\nid = \"all\"\npath = \"/\"\n" +
-			"\n[[tool.wikiview.graph]]\nid = \"work\"\npath = \"/work\"\n" +
-			"\n[[tool.wikiview.graph]]\nid = \"notes\"\npath = \"/work\"\nwhere = [\"type=note\"]\nneighbours = true\n",
+			"\n[[board]]\nid = \"work\"\npath = \"/work\"\n" +
+			"\n[[board]]\nid = \"all\"\npath = \"/\"\n" +
+			"\n[[graph]]\nid = \"work\"\npath = \"/work\"\n" +
+			"\n[[graph]]\nid = \"notes\"\npath = \"/work\"\nwhere = [\"type=note\"]\nneighbours = true\n",
 		"index.md":     "---\nokf_version: \"0.1\"\n---\n[a](./work/a.md)\n",
 		"work/a.md":    "---\ntype: task\nstatus: todo\n---\n",
 		"work/b.md":    "---\ntype: task\n---\nno status, still a card\n",
