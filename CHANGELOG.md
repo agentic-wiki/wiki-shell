@@ -2,6 +2,13 @@
 
 All notable changes to WikiShell are documented here. This project follows [semantic versioning](https://semver.org); while pre-1.0, breaking changes bump the minor version.
 
+## Unreleased
+
+### Security
+
+- **`/raw` and `/api/entry` never serve a dot path**: a path with a part that starts with a dot, such as `.env`, `.git/config` or `.ssh/…`, even when a page links to it. A symlink that leads to one, or out of the bundle, is refused the same way. Before, a page linking to `.git/config` made it readable, git credentials in the remote URL included.
+- **`/raw` serves only what a page can display, and text**: images, PDFs, audio, video, and text files. Another binary that a page links to (a database, an archive) is no longer downloadable.
+
 ## v0.19.0
 
 ### Breaking

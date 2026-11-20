@@ -161,6 +161,11 @@ func (s *Server) handleEntry(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, errorBody{err.Error()})
 		return
 	}
+	// The rule /raw follows: no dot path, and no symlink to one or out of the bundle.
+	if _, ok := realFile(idx.Bundle.Dir, e.Path); hidden(e.Path) || !ok {
+		writeJSON(w, http.StatusNotFound, errorBody{"not found"})
+		return
+	}
 
 	body, err := e.Body()
 	if err != nil {
@@ -207,7 +212,7 @@ func outgoing(idx *index.Index, e *index.Entry) []LinkView {
 		// Not an entry and not named like one, so it is a file the bundle
 		// carries. A missing `.md` deliberately gets nothing: that is knowledge
 		// not yet written, not a file to fetch.
-		if err != nil && !strings.HasSuffix(l.Target, ".md") {
+		if err != nil && !strings.HasSuffix(l.Target, ".md") && !hidden(l.Target) {
 			asset = "/raw" + (&url.URL{Path: l.Target}).EscapedPath() // never an Outside link
 		}
 		out = append(out, LinkView{

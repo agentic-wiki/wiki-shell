@@ -295,22 +295,25 @@ func TestRawDisplaysAnythingThatReadsAsText(t *testing.T) {
 	}
 }
 
-// Bytes decide for unknown extensions, but not for markup a browser executes,
-// and not for something that is plainly not text.
-func TestRawStillDownloadsBinariesAndMarkup(t *testing.T) {
+// Bytes decide for unknown extensions, but not for markup a browser executes:
+// valid UTF-8, and exactly what must not render, so it is downloaded.
+func TestRawDownloadsMarkup(t *testing.T) {
 	srv, _ := newAssetServer(t)
+	rec := rawGet(t, srv, "/raw/notes/page.html")
+	if ct := rec.Header().Get("Content-Type"); ct != "application/octet-stream" {
+		t.Errorf("content-type=%q, want application/octet-stream", ct)
+	}
+	if cd := rec.Header().Get("Content-Disposition"); !strings.HasPrefix(cd, "attachment") {
+		t.Errorf("content-disposition=%q, want an attachment", cd)
+	}
+}
 
-	for _, path := range []string{
-		"/raw/notes/blob.bin",  // NUL bytes: binary whatever it is called
-		"/raw/notes/page.html", // valid UTF-8, and exactly what must not render
-	} {
-		rec := rawGet(t, srv, path)
-		if ct := rec.Header().Get("Content-Type"); ct != "application/octet-stream" {
-			t.Errorf("%s content-type=%q, want application/octet-stream", path, ct)
-		}
-		if cd := rec.Header().Get("Content-Disposition"); !strings.HasPrefix(cd, "attachment") {
-			t.Errorf("%s content-disposition=%q, want an attachment", path, cd)
-		}
+// A binary no page displays (NUL bytes, whatever it is called) is not served,
+// even linked: only images, PDFs, audio, video and text are.
+func TestRawRefusesOtherBinaries(t *testing.T) {
+	srv, _ := newAssetServer(t)
+	if rec := rawGet(t, srv, "/raw/notes/blob.bin"); rec.Code != http.StatusNotFound || strings.Contains(rec.Body.String(), "binary") {
+		t.Errorf("blob.bin: %d %q", rec.Code, rec.Body.String())
 	}
 }
 

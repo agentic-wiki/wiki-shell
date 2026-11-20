@@ -33,6 +33,18 @@ var inlineTypes = map[string]string{
 	".ico":  "image/x-icon",
 	".svg":  "image/svg+xml",
 	".pdf":  "application/pdf",
+	".mp3":  "audio/mpeg",
+	".m4a":  "audio/mp4",
+	".ogg":  "audio/ogg",
+	".oga":  "audio/ogg",
+	".opus": "audio/ogg",
+	".wav":  "audio/wav",
+	".flac": "audio/flac",
+	".mp4":  "video/mp4",
+	".m4v":  "video/mp4",
+	".webm": "video/webm",
+	".ogv":  "video/ogg",
+	".mov":  "video/quicktime",
 	".txt":  "text/plain; charset=utf-8",
 	".csv":  "text/plain; charset=utf-8",
 	".log":  "text/plain; charset=utf-8",
@@ -77,24 +89,20 @@ const svgPolicy = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
 // Dropping the last link to an image makes it unreachable again, which is the
 // intended behaviour rather than an oversight: reachability follows the
 // bundle's own references.
+//
+// A link is not enough on its own, though: a dot path is never served (see
+// hidden), and a file is served only when a page can display it or it is text.
+// Once the browser can write pages, anyone who passes the API check can add a
+// link, so a link says nothing about what the user meant to publish.
 func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {
 	v := s.store.View()
 	path := "/" + strings.TrimPrefix(r.PathValue("path"), "/")
-	if _, ok := v.Files[path]; !ok {
+	if _, ok := v.Files[path]; !ok || hidden(path) {
 		writeJSON(w, http.StatusNotFound, errorBody{"nothing linked at that path"})
 		return
 	}
-
-	// Resolved before opening. The key is in the bundle by construction, but a
-	// symlink sitting at that path is not bound by that, and following one would
-	// serve a file the bundle only points at.
-	full, err := filepath.EvalSymlinks(filepath.Join(v.Index.Bundle.Dir, filepath.FromSlash(path)))
-	if err != nil {
-		writeJSON(w, http.StatusNotFound, errorBody{"not found"})
-		return
-	}
-	root, err := filepath.EvalSymlinks(v.Index.Bundle.Dir)
-	if err != nil || !within(root, full) {
+	full, ok := realFile(v.Index.Bundle.Dir, path)
+	if !ok {
 		writeJSON(w, http.StatusNotFound, errorBody{"not found"})
 		return
 	}
@@ -132,7 +140,9 @@ func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {
 		// source rather than running.
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	default:
-		download(w, full)
+		// A binary no page displays: a database, an archive, a key. Not served.
+		writeJSON(w, http.StatusNotFound, errorBody{"WikiShell serves images, PDFs, audio, video and text only"})
+		return
 	}
 	// ServeContent rather than a copy: it answers a range request and a
 	// conditional one, which is what makes a large image or a PDF behave.
@@ -184,9 +194,37 @@ func isText(f *os.File) bool {
 	return utf8.Valid(head)
 }
 
-// within reports whether p is root itself or inside it. Both are expected to be
-// cleaned, absolute and symlink-free.
-func within(root, p string) bool {
-	rel, err := filepath.Rel(root, p)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+// hidden reports whether a bundle path has a segment that starts with a dot:
+// `.git`, `.env`, `.ssh`, an editor's swap file. Such a path is never served
+// or shown, whatever links to it. This is the one rule every read path
+// follows.
+func hidden(p string) bool {
+	for _, seg := range strings.Split(filepath.ToSlash(p), "/") {
+		if strings.HasPrefix(seg, ".") {
+			return true
+		}
+	}
+	return false
+}
+
+// realFile is the file on disk behind a bundle path, with symlinks resolved,
+// when that file is inside the bundle and not hidden. A symlink at a plain
+// path is not bound by the path's rules: followed blindly, `notes/x.md ->
+// ../.git/config` or a link out of the bundle would serve what the bundle only
+// points at. Resolved relative to the bundle's real root, a path outside it
+// starts with `..`, which hidden refuses too.
+func realFile(bundleDir, p string) (string, bool) {
+	full, err := filepath.EvalSymlinks(filepath.Join(bundleDir, filepath.FromSlash(p)))
+	if err != nil {
+		return "", false
+	}
+	root, err := filepath.EvalSymlinks(bundleDir)
+	if err != nil {
+		return "", false
+	}
+	rel, err := filepath.Rel(root, full)
+	if err != nil || hidden(rel) {
+		return "", false
+	}
+	return full, true
 }

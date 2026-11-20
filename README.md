@@ -236,7 +236,7 @@ A write carries the `version` it was read at, and one that has moved is refused 
 
 `POST /api/graph` and `PUT /api/graph/{id}` do the same for graphs. A graph's settings are `name`, `where` and `neighbours`, and a graph's id is checked only against other graphs. A graph is refused by the same rule, a path that is not a folder; an empty folder is fine. All of these writes edit `wiki.toml` line by line and never reserialize it, so comments, other tools' tables and your formatting survive; a value written across several lines is reported rather than edited around.
 
-`/raw` serves what the index refers to, not what the directory contains: every entry, plus every non-entry an entry links to. A `.env` sitting beside your notes has no key there, so it cannot be requested.
+`/raw` serves what the index refers to, not what the directory contains: every entry, plus every non-entry an entry links to. Of those, it serves only what a page can display (images, PDFs, audio and video) and text; another binary, such as a database or an archive, is not served even when a page links to it. A path with a part that starts with a dot (`.env`, `.git/config`, `.ssh/…`) is never served, and neither is a file a symlink leads to that is a dot path or outside the bundle. `/api/entry` follows the same rule, so an entry named `.draft.md` or a symlink to `.env` does not open, and a page's link to a dot path gets no `/raw` address.
 
 It is also the only way to get an entry's exact bytes. `/api/entry` returns the body with frontmatter stripped and the frontmatter parsed, and you cannot reassemble the original file from those.
 
