@@ -64,6 +64,7 @@ The path defaults to the working directory and walks up looking for `wiki.toml`,
 | --- | --- | --- |
 | `--host` | `localhost` | interface to listen on; any non-loopback address (`0.0.0.0` for all) turns the token on |
 | `--port` | `8080` | port to listen on |
+| `--edit` | | on a network address, let anyone with the link edit pages, commit and push as you; it means nothing on localhost, where editing is always on |
 | `--version` | | print the version and exit |
 
 ```sh
@@ -75,6 +76,8 @@ wikishell my-kb --port 3000
 **On a network address, open the link it prints.** With `--host 0.0.0.0` or another non-loopback address, WikiShell creates a token at every start and prints it in the link: `http://<this machine>:8080/#t=…`. With `0.0.0.0`, the link names the machine by its hostname. If another machine cannot resolve that name, use this machine's IP in its place. Open the link once: the app keeps the token for that tab and takes it out of the address bar. A tab without it says what to do and shows no entry. The token lasts until the process exits, and a restart prints a new one.
 
 There is no TLS, so the token and every page cross the network in clear text. Use a network address only on a network you trust.
+
+**On a network address, the wiki is read-only unless you start with `--edit`.** Without it, every change (a page, a field, a board, a git action) is refused with `403`, and the app shows the wiki read-only; only Refresh still works, since it just re-reads the files. With `--edit`, everyone holding the link can rewrite every page, commit and push as you, and your agents read those pages, so use it only with people you trust.
 
 ## A quick tour
 
@@ -101,7 +104,7 @@ There is no TLS, so the token and every page cross the network in clear text. Us
   </tr>
   <tr>
     <td><b>Follow a thread.</b> Point at a node and its links light, with arrows for which way they go.</td>
-    <td><b>Read later.</b> A queue of entries to come back to, in your own order.<br><b>Git.</b> The branch pill says what changed; commit, pull and push from its popover without leaving the page.</td>
+    <td><b>Read later.</b> A queue of entries to come back to, in your own order.<br><b>Git.</b> The branch pill says what changed; pull and push from its popover, and review and commit in the changes view.</td>
   </tr>
 </table>
 
@@ -119,7 +122,9 @@ Callouts are set apart rather than shown as syntax: `> [!warning]`, `> [!success
 
 Light, dark and system themes, and a reading column you can widen for a big screen. Both are yours rather than the bundle's, and both are applied before the first paint.
 
-Boards are built: columns, lanes, drag by both at once, and a card sheet. So are graphs: the entries of a folder you declare as nodes, the links between them as edges, the way Obsidian draws them. On either, ⌘F (Ctrl+F) goes to the view's own search box, filtering cards or highlighting nodes; press it again there for the browser's find. Escape there clears it. Git is there too: refresh, pull and sync, each showing what it will do before it does it, and a failed pull undoing itself and offering your work as a named branch. Dataset tables are not built yet, and nothing edits prose. Your editor is already open on these files and an agent is writing them at the same time, so a browser textarea would come third. The plan lives in [`backlog/`](backlog/index.md), which is itself a bundle you can serve.
+Boards are built: columns, lanes, drag by both at once, and a card sheet. So are graphs: the entries of a folder you declare as nodes, the links between them as edges, the way Obsidian draws them. On either, ⌘F (Ctrl+F) goes to the view's own search box, filtering cards or highlighting nodes; press it again there for the browser's find. Escape there clears it. Git is there too: fetch, pull and push, each showing what it will do before it does it, and a failed pull undoing itself and offering your work as a named branch.
+
+Every page is editable where you read it: click and type, as in Notion, with `/` for blocks and Markdown shortcuts. Each change is saved to the file as you go, block by block, so every byte you didn't touch stays as it was, and nothing is committed until you say so. The changes view (`/changes`, or "Review changes" in the palette) shows every uncommitted change, yours or an agent's, as a rendered diff with the raw lines a click away; there you discard a change, a field or a file, and commit the files you tick, each as you saw it. An agent writing the same file meanwhile is taken in live; the block you are typing in is never overwritten, and where you both changed one, you choose. On an address other than localhost, editing needs `--edit`. Dataset tables are not built yet. The plan lives in [`backlog/`](backlog/index.md), which is itself a bundle you can serve.
 
 ## Configuration
 
@@ -198,13 +203,16 @@ curl -H "X-Wikishell-Token: local" http://localhost:8080/api/bundle
 ```
 
 ```
-GET  /api/bundle              the bundle itself: dir, spec, entry count, [tool.*] tables, version, declared boards and graphs, and every tag in first-appearance order
+GET  /api/bundle              the bundle itself: dir, spec, entry count, [tool.*] tables, version, declared boards and graphs, every tag in first-appearance order, the types wiki.toml declares, and whether it takes edits
 GET  /api/tree                the folder tree, each folder's entries and its index.md if it has one,
                               with when each last changed and how many entries it is
                               linked with, either way (its degree on a graph)
 GET  /api/entry/{path...}     one entry: body, frontmatter, checkboxes, and resolved-link
-                              and heading-id tables, and when it last changed (its
-                              `timestamp`, else the file's mtime, as `wiki` sorts)
+                              and heading-id tables, when it last changed (its
+                              `timestamp`, else the file's mtime, as `wiki` sorts),
+                              and its version and blocks, for an edit
+GET  /api/blocks/{path...}    what changed since ?since=<version>, by block, or the
+                              whole block list for a version no longer kept
 GET  /api/board/{id}          one board as columns of cards, in the config's order,
                               with the frontmatter keys its folder uses and the
                               entries under it whose frontmatter couldn't be read
@@ -213,10 +221,18 @@ GET  /api/graph/{id}          one graph as nodes and edges, each edge saying whi
 GET  /api/git                 the bundle's repository: branch, upstream, ahead/behind,
                               the commits a pull would take (up to 50, as of the
                               last fetch), and everything a commit would carry
+GET  /api/changes             every uncommitted change in the bundle, with its version,
+                              and its `mode` when its git mode changed
+GET  /api/changes/{path...}   one changed file's diff: by block and field for a page,
+                              by line otherwise, and its numbered hunks
+GET  /api/table/{path...}     a page's one table as a file, ?format=csv or json: the
+                              bytes `wiki table --format` prints, as an attachment
 GET  /api/events              server-sent events carrying the current version
 GET  /raw/{path...}           a file as it is on disk, frontmatter and all
-PUT  /api/checkbox/{path...}  toggle a checkbox, guarded by the version you read
-PUT  /api/card/{id}/{path...} move a card to another column and lane, same guard
+PUT  /api/blocks/{path...}    save a page's changed blocks, merged with what changed on disk
+PUT  /api/fields/{path...}    set frontmatter fields, each guarded by the value you read
+POST /api/entries             create a page, never over a file
+PUT  /api/card/{id}/{path...} move a card to another column and lane, guarded by the version you read
 POST /api/board               declare a board, appending it to the bundle's wiki.toml
 PUT  /api/board/{id}          change a board's settings in place
 POST /api/graph               declare a graph, the same way
@@ -224,11 +240,19 @@ PUT  /api/graph/{id}          change a graph's settings in place
 POST /api/refresh             re-read the files
 POST /api/git/fetch           ask the remote what it has
 POST /api/git/pull            rebase onto the upstream, undoing the attempt if it fails
-POST /api/git/sync            commit what is in the bundle, and push
+POST /api/changes/discard     put a file, or one hunk of it, back as HEAD has it
+POST /api/commit              commit the files you saw, each at the version you saw
+POST /api/git/push            push the branch
 POST /api/git/branch          push the current work to a new branch
 ```
 
-A write carries the `version` it was read at, and one that has moved is refused with `409` and the current version. `/api/card` takes the values a drop landed on, `{"value": "done", "lane": "high", "version": 7}`, and the board decides which frontmatter keys those stand for. Both are written in one pass, and an empty `lane` leaves that field alone rather than clearing it.
+A page is written block by block, through `wiki`'s guarded write (`Entry.ApplyBlocks`). `PUT /api/blocks` takes `{"base": "<version>", "baseBlocks": ["<hash>", …], "ops": […]}`: the version and block hashes you read from `/api/entry`, and the changes as `replace`, `insert` and `delete` operations anchored by a block's index and hash. What changed on disk meanwhile is merged three ways, so an agent's edit to another block is kept; a block both changed comes back as a conflict, with the disk's text, and the rest is written (`200`). An invalid save is refused with `422` and writes nothing; a request that isn't valid JSON, or a body over 2 MiB, gets `400`. Ticking a checkbox is a `replace` of its item. `PUT /api/fields` takes `{"set": {…}, "old": {…}, "unset": […]}` and writes each key that still holds its `old` value. It refuses with `422` a `type` that `wiki.toml`'s declared `types` don't hold, and a key wiki can't write back as itself. `POST /api/entries` takes `{"path": "/notes/x.md", "content": "…"}` and answers `201`, or `409` where a file is. The server keeps each page's last 8 block lists (over the 64 pages most recently served) to answer `/api/blocks?since=` with only what changed. Both block reads say whether the page is `editable`: not on a read-only network bind, and not for a page over 20,000 blocks, which opens read-only, without its blocks.
+
+The changes view reads git without touching your index or object store: it diffs a shadow index against HEAD, with the objects it hashes in a private folder under your cache folder (`wikishell/shadow-*`, mode 0700, deleted when the server stops, and at the next start if the server was killed; with no cache folder, as when `HOME` is unset, the changes view answers with that reason instead of using a shared folder such as `/tmp`). So a new file shows up, and a deleted file plus a new one shows as a rename, while `git status` in a terminal reads as before. A file whose name or folder starts with a dot is listed by name only (`kind: dot`), never read, diffed or committed here, and isn't listed at all on a network address. A file over 2 MiB is listed with its `size`, without a diff, and read as a stream, never whole. A file with a `filter` attribute (git-lfs) is listed without a diff too, so its clean filter doesn't run each time the list is read. A symlink (`kind: link`) is its target text, never followed. A file whose git mode changed carries `mode: {from, to}`: an execute bit set or cleared, or a file that became a symlink (`120000`) or stopped being one. A new file has no `from`, and shows only a mode other than `100644`. `POST /api/changes/discard` takes `{"path": "/notes/a.md", "version": "…", "hunk": 2}` (no `hunk` for the whole file): `hunk` is an index into the diff's `hunks`, and a `version` that moved gets `409` with nothing discarded. A page's diff has `header: true` when its header's bytes differ from HEAD's, a key moved say, even where no field's value changed. A page is any `.md` file, indexed yet or not. Its hunk is undone with the same block merge as an edit, worked out from the bytes you were shown and written only if the file still has them (`wiki`'s `Index.WriteIf`): all or nothing. A field comes back as HEAD's own lines for it, so any value returns exactly. `POST /api/commit` takes `{"message": "…", "files": [{"path": "…", "version": "…"}], "push": false}`. It commits the bytes it checked against each version, never the worktree at commit time, through a temporary index, so whatever else you staged stays staged. A file that changed since is listed under `refused`, and the rest is committed. Your `pre-commit` and `commit-msg` hooks run (this needs git 2.36 or later), and signing follows `commit.gpgsign`. Each file gets the mode `git add` would give it: with `core.fileMode` on, its execute bit; with it off, the mode it had. A commit whose files are all as HEAD has them is `422`. If the branch moved meanwhile, it's `409` and nothing is committed.
+
+A refetch of the list reuses what it can, so hundreds of changed pages stay cheap: a page's counts while its bytes and HEAD's are the same, and a large file's version while its size, time and mode are. A discard or a commit always reads the file again.
+
+A card or board write carries the bundle `version` it was read at, and one that has moved is refused with `409` and the current version. `/api/card` takes the values a drop landed on, `{"value": "done", "lane": "high", "version": 7}`, and the board decides which frontmatter keys those stand for. Both are written in one pass, and an empty `lane` leaves that field alone rather than clearing it.
 
 `POST /api/board` takes `{"id": "bugs", "path": "/backlog", "name": "Bugs", "where": ["type=task"]}` and appends a `[[board]]` table, leaving the rest of the file alone. Leave `where` out to get the default; send `[]` for every entry under the path. The dialog gets its starting filter and the folder's keys from `GET /api/draft/{board|graph}/{folder}`, so the default is defined once, on the server. It refuses an id that is not a word, one already declared, a filter that does not parse, and a path that is not a folder in the bundle. A folder with no tasks in it yet is fine: the board starts empty and says what will fill it.
 

@@ -194,66 +194,6 @@ func TestMoveCardOnTheRootBoard(t *testing.T) {
 	}
 }
 
-// The checkbox write, which had no test of its own: the UI suite covered the
-// client half and this half was taken on trust.
-func TestToggleCheckbox(t *testing.T) {
-	srv := newTestServer(t)
-	at := versionOf(t, srv)
-
-	// Line 10 of notes/a.md, counted from the top of the *file*. Counting within
-	// the body puts the same checkbox at 5, which is the mistake the two
-	// coordinate systems exist to make impossible.
-	code, after := put(t, srv, "/api/checkbox/notes/a.md", checkboxRequest{Line: 10, Done: true, Version: at})
-	if code != http.StatusOK {
-		t.Fatalf("PUT = %d, want 200", code)
-	}
-	if after == at {
-		t.Errorf("version did not move: %d", after)
-	}
-	if got := raw(t, srv, "notes/a.md"); !strings.Contains(got, "- [x] open") {
-		t.Errorf("a.md = %q", got)
-	}
-}
-
-// The version is the whole guard: a line only means something against the
-// content it was read from, so a refused toggle must leave the file alone.
-func TestToggleCheckboxRefusesAStaleEntry(t *testing.T) {
-	srv := newTestServer(t)
-	stale := versionOf(t, srv)
-	if code, _ := put(t, srv, "/api/checkbox/notes/a.md", checkboxRequest{Line: 10, Done: true, Version: stale}); code != http.StatusOK {
-		t.Fatalf("setup PUT = %d", code)
-	}
-	current := versionOf(t, srv)
-
-	code, reported := put(t, srv, "/api/checkbox/notes/a.md", checkboxRequest{Line: 10, Done: false, Version: stale})
-	if code != http.StatusConflict {
-		t.Fatalf("PUT = %d, want 409", code)
-	}
-	if reported != current {
-		t.Errorf("conflict reported version %d, want %d", reported, current)
-	}
-	if got := raw(t, srv, "notes/a.md"); !strings.Contains(got, "- [x] open") {
-		t.Errorf("a refused toggle wrote anyway: %q", got)
-	}
-}
-
-// A line that is not a checkbox, and an entry that does not exist. The engine
-// owns the first answer; this only has to pass it on rather than write anyway.
-func TestToggleCheckboxRefusesWhatIsNotOne(t *testing.T) {
-	srv := newTestServer(t)
-	at := versionOf(t, srv)
-
-	if code, _ := put(t, srv, "/api/checkbox/notes/a.md", checkboxRequest{Line: 1, Done: true, Version: at}); code != http.StatusUnprocessableEntity {
-		t.Errorf("a line that is not a checkbox = %d, want 422", code)
-	}
-	if code, _ := put(t, srv, "/api/checkbox/notes/gone.md", checkboxRequest{Line: 1, Done: true, Version: at}); code != http.StatusNotFound {
-		t.Errorf("an entry that does not exist = %d, want 404", code)
-	}
-	if versionOf(t, srv) != at {
-		t.Error("a refused toggle rebuilt the index")
-	}
-}
-
 func TestDeclareBoardAppendsToWikiToml(t *testing.T) {
 	srv := newBoardServer(t, `spec = "0.1"
 # A comment the user wrote, and their own spacing.

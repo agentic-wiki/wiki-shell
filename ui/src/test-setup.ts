@@ -2,6 +2,10 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register({ url: "http://localhost/" });
 
+// The app's tests drive the reader; the editor's own tests turn this back on.
+const { editorPrefetch } = await import("@/editing");
+editorPrefetch.enabled = false;
+
 // Without this React refuses to treat act() as act, so effects are flushed by
 // whatever timing the test happens to have rather than deterministically.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

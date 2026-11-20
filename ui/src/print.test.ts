@@ -35,11 +35,13 @@ test("no print rule restyles an element the print rules hide", () => {
     // Only selectors that could match something hidden are at risk.
     .filter((rule) => rule.selector.includes("[data-scroller]") || rule.selector.includes("[data-print"))
     // Saying so is the fix. The sheet is exempt because it is never hidden: it
-    // exists only while a card is open, which is the case it is styled for.
+    // exists only while a card is open, which is the case it is styled for. So
+    // is what prints in place of chrome, which is never marked as chrome.
     .filter(
       (rule) =>
         !rule.selector.includes(':not([data-print="hide"])') &&
-        !rule.selector.includes('[data-print="sheet"]'),
+        !rule.selector.includes('[data-print="sheet"]') &&
+        rule.selector !== '[data-print="only"]',
     )
     .map((rule) => rule.selector);
 

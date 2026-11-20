@@ -13,3 +13,6 @@ coverage.out
 # tsc -b's incremental cache. Machine-specific and regenerated on every build.
 *.tsbuildinfo
 .DS_Store
+
+# What the editor's content check saves when a page differs.
+/ui/e2e/out/

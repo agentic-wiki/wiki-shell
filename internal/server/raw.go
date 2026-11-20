@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/agentic-wiki/wiki-shell/internal/git"
 )
 
 // inlineTypes are the content types served for display. Everything else is
@@ -91,13 +93,13 @@ const svgPolicy = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
 // bundle's own references.
 //
 // A link is not enough on its own, though: a dot path is never served (see
-// hidden), and a file is served only when a page can display it or it is text.
+// git.IsDot), and a file is served only when a page can display it or it is text.
 // Once the browser can write pages, anyone who passes the API check can add a
 // link, so a link says nothing about what the user meant to publish.
 func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {
 	v := s.store.View()
 	path := "/" + strings.TrimPrefix(r.PathValue("path"), "/")
-	if _, ok := v.Files[path]; !ok || hidden(path) {
+	if _, ok := v.Files[path]; !ok || git.IsDot(path) {
 		writeJSON(w, http.StatusNotFound, errorBody{"nothing linked at that path"})
 		return
 	}
@@ -194,25 +196,12 @@ func isText(f *os.File) bool {
 	return utf8.Valid(head)
 }
 
-// hidden reports whether a bundle path has a segment that starts with a dot:
-// `.git`, `.env`, `.ssh`, an editor's swap file. Such a path is never served
-// or shown, whatever links to it. This is the one rule every read path
-// follows.
-func hidden(p string) bool {
-	for _, seg := range strings.Split(filepath.ToSlash(p), "/") {
-		if strings.HasPrefix(seg, ".") {
-			return true
-		}
-	}
-	return false
-}
-
 // realFile is the file on disk behind a bundle path, with symlinks resolved,
-// when that file is inside the bundle and not hidden. A symlink at a plain
+// when that file is inside the bundle and not a dot path. A symlink at a plain
 // path is not bound by the path's rules: followed blindly, `notes/x.md ->
 // ../.git/config` or a link out of the bundle would serve what the bundle only
 // points at. Resolved relative to the bundle's real root, a path outside it
-// starts with `..`, which hidden refuses too.
+// starts with `..`, which git.IsDot refuses too.
 func realFile(bundleDir, p string) (string, bool) {
 	full, err := filepath.EvalSymlinks(filepath.Join(bundleDir, filepath.FromSlash(p)))
 	if err != nil {
@@ -223,7 +212,7 @@ func realFile(bundleDir, p string) (string, bool) {
 		return "", false
 	}
 	rel, err := filepath.Rel(root, full)
-	if err != nil || hidden(rel) {
+	if err != nil || git.IsDot(rel) {
 		return "", false
 	}
 	return full, true

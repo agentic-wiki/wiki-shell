@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { StrictMode, act } from "react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router";
 import { App } from "@/App";
-import { proposeMessage } from "@/shell/GitActions";
+import { proposeMessage } from "@/changes/message";
 import { streamTiming, type BundleInfo, type Entry, type GitStatus, type Graph, type TreeNode } from "@/api";
 import { forget } from "@/cache";
 import { clearToken, storeToken, takeTokenFromUrl, token } from "@/token";
@@ -32,7 +32,9 @@ const bundle: BundleInfo = {
   entries: 3,
   tools: ["other"],
   tags: [],
+  types: [],
   version: 1,
+  editable: true,
   boards: [{ path: "/notes", id: "notes", name: "Notes", status: "status", cards: 3 }],
   // One graph, over the same folder under the same id as the board: the two
   // are addressed under different prefixes and must not be confused.
@@ -148,6 +150,9 @@ const entry: Entry = {
   ],
   headings: [{ level: 1, text: "A Note", id: "a-note", line: 5, bodyLine: 1 }],
   checkboxes: [],
+  version: "v1",
+  blocks: [],
+  editable: true,
 };
 
 /** The front door, with a body of its own. Distinct from every other entry on
@@ -164,6 +169,9 @@ const indexEntry: Entry = {
   backlinks: [],
   headings: [{ level: 1, text: "The Front Door", id: "the-front-door", line: 4, bodyLine: 1 }],
   checkboxes: [],
+  version: "v1",
+  blocks: [],
+  editable: true,
 };
 
 /** An entry whose checkbox sits on line 6 — deliberately not the line a client
@@ -182,6 +190,13 @@ const checksEntry: Entry = {
   // File line 6, body line 5: the frontmatter offset is exactly what the two
   // coordinate systems exist to keep straight.
   checkboxes: [{ line: 6, bodyLine: 5, done: false, text: "the only checkbox" }],
+  version: "v1",
+  blocks: [
+    { kind: "paragraph", text: "Some prose first.", hash: "h0" },
+    { kind: "paragraph", text: "And more.", hash: "h1" },
+    { kind: "item", text: "- [ ] the only checkbox", hash: "h2" },
+  ],
+  editable: true,
 };
 
 /** Opens with prose that already says its own title, in emphasis. Prepending
@@ -197,6 +212,9 @@ const namedInProse: Entry = {
   backlinks: [],
   headings: [],
   checkboxes: [],
+  version: "v1",
+  blocks: [],
+  editable: true,
 };
 
 /** Opens with a heading that says something *other* than the title. Without
@@ -214,6 +232,9 @@ const headingDiffers: Entry = {
   backlinks: [],
   headings: [{ level: 1, text: "Steps", id: "steps", line: 4, bodyLine: 1 }],
   checkboxes: [],
+  version: "v1",
+  blocks: [],
+  editable: true,
 };
 
 /** An entry with a seven-column table: the shape the scroller wrapper is for. */
@@ -234,6 +255,9 @@ const tableEntry: Entry = {
   backlinks: [],
   headings: [{ level: 1, text: "Counts", id: "counts", line: 4, bodyLine: 1 }],
   checkboxes: [],
+  version: "v1",
+  blocks: [],
+  editable: true,
 };
 
 /** The open change stream, so a test can deliver a version on it or end it the
@@ -293,6 +317,9 @@ const sectionsEntry: Entry = {
   ],
   checkboxes: [],
   updated: new Date(Date.now() - 3 * 3600_000).toISOString(),
+  version: "v1",
+  blocks: [],
+  editable: true,
 };
 
 /** Untitled, with prose before its first H1, so the server takes its title from
@@ -308,7 +335,35 @@ const lateHeading: Entry = {
   backlinks: [],
   headings: [{ level: 1, text: "Late fees", id: "late-fees", line: 3, bodyLine: 3 }],
   checkboxes: [],
+  version: "v1",
+  blocks: [],
+  editable: true,
 };
+
+/** A dataset's page with `tables` tables (none: blocks not sent, as for a page
+ *  too big to split), and the CSV the server writes for it. */
+const datasetEntry = (path: string, tables?: number): Entry => ({
+  path,
+  title: "Expenses",
+  type: "dataset",
+  frontmatter: { type: "dataset" },
+  body: "| date | note |\n|---|---|\n| 2026-11-01 | =1+1 |\n",
+  links: [],
+  frontmatterRefs: [],
+  backlinks: [],
+  headings: [],
+  checkboxes: [],
+  version: "v1",
+  editable: true,
+  blocks:
+    tables === undefined
+      ? []
+      : Array.from({ length: tables }, () => [
+          { kind: "table-head" as const, text: "| date | note |\n|---|---|", hash: "h" },
+          { kind: "row" as const, text: "| 2026-11-01 | =1+1 |", hash: "r" },
+        ]).flat(),
+});
+const EXPENSES_CSV = "date,note\n2026-11-01,'=1+1\n";
 
 function stubFetch() {
   fetches = 0;
@@ -377,6 +432,35 @@ function stubFetch() {
     // mean a "missing" entry still returned content, and the not-found path
     // would never be exercised.
     if (url.includes("/api/entry/index.md")) return body(indexEntry);
+    if (url.includes("/api/entry/notes/expenses.md")) return body(datasetEntry("/notes/expenses.md", 1));
+    if (url.includes("/api/entry/notes/two.md")) return body(datasetEntry("/notes/two.md", 2));
+    if (url.includes("/api/entry/notes/huge.md")) return body(datasetEntry("/notes/huge.md"));
+    if (url.includes("/api/entry/notes/slow.md")) return body(datasetEntry("/notes/slow.md", 1));
+    if (url.includes("/api/entry/notes/offline.md")) return body(datasetEntry("/notes/offline.md", 1));
+    if (url.includes("/api/table/notes/offline.md")) return Promise.reject(new TypeError("Failed to fetch"));
+    if (url.includes("/api/table/notes/slow.md")) {
+      return new Promise<Response>((resolve) => {
+        releaseTable = () => resolve(new Response("a\n", { headers: { "content-type": "text/csv; charset=utf-8" } }));
+      });
+    }
+    if (url.includes("/api/table/notes/expenses.md?format=csv")) {
+      return Promise.resolve(
+        new Response(EXPENSES_CSV, {
+          headers: {
+            "content-type": "text/csv; charset=utf-8",
+            "content-disposition": `attachment; filename="Despeses-d-octubre.csv"; filename*=UTF-8''Despeses%20d%27octubre.csv`,
+          },
+        }),
+      );
+    }
+    if (url.includes("/api/table/notes/huge.md")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ error: "this page has 2 tables, and a dataset holds one." }), {
+          status: 422,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
     if (url.includes("/api/entry/notes/a.md")) return body(entry);
     return Promise.resolve(
       new Response(JSON.stringify({ error: "no entry at that path" }), {
@@ -534,16 +618,18 @@ test("heading ids come from the server, not from a client slugger", async () => 
   expect(h1?.getAttribute("id")).toBe("a-note");
 });
 
-test("a checkbox toggle sends the line the server gave, with the version", async () => {
+test("a tick is a replace of the item's block, with only its box changed", async () => {
   const calls: { url: string; body: unknown }[] = [];
   const realFetch = globalThis.fetch;
   await mountAt("/wiki/notes/checks.md");
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     if (init?.method === "PUT") {
       calls.push({ url: String(input), body: JSON.parse(String(init.body)) });
-      return Promise.resolve(new Response(JSON.stringify({ version: 2 }), {
-        headers: { "content-type": "application/json" },
-      }));
+      return Promise.resolve(
+        new Response(JSON.stringify({ version: "v2", ops: [], conflicts: [], rewritten: false }), {
+          headers: { "content-type": "application/json" },
+        }),
+      );
     }
     return realFetch(input, init);
   }) as typeof fetch;
@@ -555,11 +641,51 @@ test("a checkbox toggle sends the line the server gave, with the version", async
   });
 
   expect(calls).toHaveLength(1);
-  expect(calls[0]!.url).toContain("/api/checkbox/notes/checks.md");
-  // Line 6 is what the fixture's server said, not a count of rendered items.
-  expect(calls[0]!.body).toEqual({ line: 6, done: true, version: 1 });
-  // The line sent is the *file* line, not the body line it was matched by.
-  expect((calls[0]!.body as { line: number }).line).not.toBe(checksEntry.checkboxes[0]!.bodyLine);
+  expect(calls[0]!.url).toContain("/api/blocks/notes/checks.md");
+  // Anchored by the block's index and hash in the version read, never by line.
+  expect(calls[0]!.body).toEqual({
+    base: "v1",
+    baseBlocks: ["h0", "h1", "h2"],
+    ops: [{ op: "replace", at: 2, hash: "h2", text: "- [x] the only checkbox" }],
+  });
+  globalThis.fetch = realFetch;
+});
+
+test("a tick the disk changed meanwhile isn't kept, and says so", async () => {
+  const realFetch = globalThis.fetch;
+  await mountAt("/wiki/notes/checks.md");
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method === "PUT") {
+      const conflict = { at: 2, case: "both-changed", theirs: [{ kind: "item", text: "- [ ] changed", hash: "h9" }] };
+      return Promise.resolve(
+        new Response(JSON.stringify({ version: "v2", ops: [], conflicts: [conflict], rewritten: false }), {
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    return realFetch(input, init);
+  }) as typeof fetch;
+
+  await act(async () => document.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  expect(document.body.textContent).toContain("Not saved: this item changed outside WikiShell.");
+  // The page stays a page: a refused write is not a missing entry.
+  expect(document.body.textContent).toContain("the only checkbox");
+  globalThis.fetch = realFetch;
+});
+
+test("on a read-only address the box shows, and the page says why it can't change", async () => {
+  bundle.editable = false;
+  checksEntry.editable = false;
+  try {
+    await mountAt("/wiki/notes/checks.md");
+    expect(document.querySelector<HTMLInputElement>('input[type="checkbox"]')?.disabled).toBe(true);
+    const chip = [...document.querySelectorAll("span")].find((s) => s.textContent === "Read only");
+    expect(chip?.getAttribute("title")).toContain("start WikiShell with --edit");
+  } finally {
+    bundle.editable = true;
+    checksEntry.editable = true;
+  }
 });
 
 // A large bundle should open navigable, not as a wall — but arriving at a deep
@@ -1100,9 +1226,9 @@ test("navigating keeps the previous entry rendered until the new one arrives", a
   globalThis.fetch = realFetch;
 });
 
-// A checkbox is addressed by a line number, which means nothing across two
-// files. While a navigation is in flight the entry on screen is not the one the
-// URL names, so a click must not be sent against the new path.
+// A tick is addressed by a block of the version it was read from, which means
+// nothing in another file. While a navigation is in flight the entry on screen
+// is not the one the URL names, so a click must not be sent against the new path.
 test("a checkbox on a superseded entry does not write to the entry being loaded", async () => {
   await mountAt("/wiki/notes/checks.md");
   const box = document.querySelector<HTMLInputElement>('input[type="checkbox"]');
@@ -1431,7 +1557,7 @@ function captureWrites(status = 200) {
     if (init?.method === "PUT" || init?.method === "POST") {
       seen.push({ url: String(input), body: JSON.parse(String(init.body)) });
       return Promise.resolve(
-        new Response(JSON.stringify({ error: refusal, version: 9 }), {
+        new Response(JSON.stringify({ error: refusal, version: 9, ops: [], conflicts: [], rewritten: false }), {
           status,
           headers: { "content-type": "application/json" },
         }),
@@ -3181,10 +3307,10 @@ test("refresh acts without a preview", async () => {
   expect(Boolean(document.querySelector("[role='dialog']"))).toBe(false);
 });
 
-// A sync previews everything it would commit, including work somebody else did:
-// an agent editing alongside is the expected case, and hiding its files would
-// misdescribe the button.
-test("sync previews every file it would commit, then acts on confirmation", async () => {
+// The Changes tab lists everything a commit could take, including work
+// somebody else did, and sends you to the changes view: the one place to
+// commit, with the diff.
+test("the Changes tab lists every changed file, and opens the changes view to commit", async () => {
   await mountAt("/wiki/index.md");
   const asked = stubGit({
     ahead: 1,
@@ -3201,20 +3327,13 @@ test("sync previews every file it would commit, then acts on confirmation", asyn
   const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Source control']")!;
   expect(dialog.textContent).toContain("notes/mine.md");
   expect(dialog.textContent).toContain("notes/by-an-agent.md");
-  expect(dialog.textContent).toContain("2 files to commit, 1 commit to push");
-  // Nothing has happened yet.
-  expect(asked.length).toBe(0);
+  expect(dialog.textContent).toContain("2 files changed, 1 commit to push");
+  expect(dialog.querySelector("[aria-label='Commit message']")).toBeNull();
 
-  const confirm = [...dialog.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes("Commit & push"),
-  )!;
-  await act(async () => confirm.click());
-  await act(async () => new Promise((r) => setTimeout(r, 0)));
-  // The message names what changed rather than asking for one or stamping a date
-  // that git already records.
-  expect(asked).toEqual([
-    { path: "/api/git/sync", body: { message: "Update 2 entries in notes" } },
-  ]);
+  const review = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Review and commit")!;
+  await act(async () => review.click());
+  expect(here).toBe("/changes");
+  expect(asked.length).toBe(0);
 });
 
 // The rule the task turns on, from the outside: a refused pull says what
@@ -3278,23 +3397,20 @@ test("the commit message is proposed from what changed", async () => {
   expect(proposeMessage([{ path: "a/x.md" }, { path: "b/y.md" }])).toBe("Update 2 entries");
 });
 
-// A bundle whose commits were made in a terminal has nothing to commit and
-// something to push. Asking for a message would be a box to dismiss on the way.
-test("a sync with nothing to commit is a push, and asks nothing", async () => {
+// Push pushes and nothing else: committing is the changes view's.
+test("push sends only the push", async () => {
   await mountAt("/wiki/index.md");
-  const asked = stubGit({ ahead: 2, changes: [] });
+  const asked = stubGit({ ahead: 2, changes: [{ path: "b.md", code: " M" }] });
   await act(async () => emitVersion(98));
   await act(async () => emitVersion(99));
   await act(async () => new Promise((r) => setTimeout(r, 0)));
 
   await openGit("Changes");
   const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Source control']")!;
-  expect(Boolean(dialog.querySelector("[aria-label='Commit message']"))).toBe(false);
-
   const confirm = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Push")!;
   await act(async () => confirm.click());
   await act(async () => new Promise((r) => setTimeout(r, 0)));
-  expect(asked).toEqual([{ path: "/api/git/sync", body: { message: "Update notes" } }]);
+  expect(asked).toEqual([{ path: "/api/git/push", body: {} }]);
 });
 
 // Nothing to do is not a button. Offering one whose only outcome is telling you
@@ -3310,7 +3426,7 @@ test("an action with nothing to do cannot be confirmed", async () => {
   const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Source control']")!;
   const confirm = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Push")!;
   expect(confirm.hasAttribute("disabled")).toBe(true);
-  expect(dialog.textContent).toContain("Nothing to sync");
+  expect([...dialog.querySelectorAll("button")].some((b) => b.textContent === "Review and commit")).toBe(false);
 });
 
 // A dialog whose work is finished has nothing left to say, so it says it and
@@ -3377,36 +3493,6 @@ test("a rescue stays on screen, because the branch name is the point", async () 
   const still = document.querySelector("[role='dialog'][aria-label='Source control']");
   expect(Boolean(still)).toBe(true);
   expect(still?.textContent).toContain("wikishell/2026-08-12-1430");
-});
-
-// Staged work outside the bundle is not going to be committed, which is exactly
-// why it gets said: staging files in a terminal and then pressing a button
-// called "commit and push" looks like it covers both.
-test("staged work outside the bundle is named as work this will not touch", async () => {
-  await mountAt("/wiki/index.md");
-  stubGit({ changes: [{ path: "bundle/b.md", code: "??" }], outside: 2 });
-  await act(async () => emitVersion(98));
-  await act(async () => emitVersion(99));
-  await act(async () => new Promise((r) => setTimeout(r, 0)));
-
-  await openGit("Changes");
-  const text = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Source control']")!.textContent!;
-  expect(text).toContain("2 staged files elsewhere in this repository");
-  expect(text).toContain("will not be committed");
-});
-
-// A repository with nothing staged outside it has nothing to say, and a dialog
-// that reassures you about every absent problem is a dialog nobody reads.
-test("a bundle that is the whole repository says nothing about elsewhere", async () => {
-  await mountAt("/wiki/index.md");
-  stubGit({ changes: [{ path: "b.md", code: "??" }], outside: 0 });
-  await act(async () => emitVersion(98));
-  await act(async () => emitVersion(99));
-  await act(async () => new Promise((r) => setTimeout(r, 0)));
-
-  await openGit("Changes");
-  const text = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Source control']")!.textContent!;
-  expect(text).not.toContain("elsewhere in this repository");
 });
 
 // The button names what it is doing. "Working…" covers a pull, a push and the
@@ -4996,13 +5082,14 @@ test("toggling the theme from the palette moves the header button too", async ()
 test("git commands open the source-control popover on their tab", async () => {
   await mountWithGit({ behind: 3, changes: [{ path: "notes/a.md", code: " M" }] });
   await openPalette();
-  expect(paletteRows().slice(0, 2)).toEqual(["Pull 3 commits", "Commit & push…"]);
-  await runCommand("Commit & push…");
+  expect(paletteRows().slice(0, 3)).toEqual(["Pull 3 commits", "Push", "Review changes"]);
+  await runCommand("Push");
   expect(document.querySelector("[role='tab'][aria-selected='true']")?.textContent).toStartWith("Changes");
 
   await mountWithGit({ repo: false, remote: "" });
   await openPalette();
-  expect(paletteRows()).not.toContain("Commit & push…");
+  expect(paletteRows()).not.toContain("Push");
+  expect(paletteRows()).not.toContain("Review changes");
   expect(paletteRows()[0]).toBe("Toggle theme");
 });
 
@@ -5935,7 +6022,7 @@ test("every sheet folds the properties, and a board's controls work while they f
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     expect(toggle()?.getAttribute("aria-expanded")).toBe("false");
     // Status and lane first: todo · high, then the rest.
-    expect([...toggle()!.querySelectorAll(":scope > span > span[title]")].slice(0, 2).map((e) => e.textContent)).toEqual([
+    expect([...toggle()!.querySelectorAll(":scope > span > [data-field] > span[title]")].slice(0, 2).map((e) => e.textContent)).toEqual([
       "todo",
       "high",
     ]);
@@ -6476,4 +6563,117 @@ test("Retry starts the stream again", async () => {
   await until(() => (container?.textContent ?? "").includes("A Note"));
 
   expect(container!.textContent).not.toContain("Cannot reach the bundle");
+});
+
+// ─── Dataset downloads ──────────────────────────────────────────────────────
+
+/** Answers the pending download of /notes/slow.md. */
+let releaseTable = () => {};
+
+/** Catches what saveFile hands the browser: the file and its name. */
+function catchSaves(): { saved: { name: string; blob: Blob }[]; restore: () => void } {
+  const saved: { name: string; blob: Blob }[] = [];
+  const create = URL.createObjectURL;
+  const click = HTMLAnchorElement.prototype.click;
+  const blobs = new Map<string, Blob>();
+  URL.createObjectURL = (b: Blob | MediaSource) => {
+    const url = `blob:test/${blobs.size}`;
+    blobs.set(url, b as Blob);
+    return url;
+  };
+  HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+    saved.push({ name: this.download, blob: blobs.get(this.getAttribute("href")!)! });
+  };
+  return {
+    saved,
+    restore: () => {
+      URL.createObjectURL = create;
+      HTMLAnchorElement.prototype.click = click;
+    },
+  };
+}
+
+// A dataset's page offers its table as a file: fetched with the token, saved
+// under the page's own name from the header, the server's bytes unchanged.
+test("a dataset's page downloads its table as CSV", async () => {
+  const { saved, restore } = catchSaves();
+  try {
+    await mountAt("/wiki/notes/expenses.md");
+    expect(Boolean(document.querySelector("article [aria-label='Download JSON']"))).toBe(true);
+    await act(async () => document.querySelector<HTMLElement>("article [aria-label='Download CSV']")!.click());
+    await act(async () => {});
+    expect(saved.map((s) => s.name)).toEqual(["Despeses d'octubre.csv"]);
+    expect(await saved[0]!.blob.text()).toBe(EXPENSES_CSV);
+    const asked = requests.find((r) => r.url.includes("/api/table/notes/expenses.md?format=csv"));
+    expect(asked?.token).toBeTruthy();
+  } finally {
+    restore();
+  }
+});
+
+test("a page that isn't a dataset offers no download", async () => {
+  await mountAt("/wiki/notes/a.md");
+  expect(document.querySelector("article [aria-label='Download CSV']")).toBeNull();
+});
+
+// Only a dataset with exactly one table offers it, so the buttons never lead
+// to a refusal.
+test("a dataset with two tables offers no download", async () => {
+  await mountAt("/wiki/notes/two.md");
+  expect(document.querySelector("article [aria-label='Download CSV']")).toBeNull();
+});
+
+// A page too big to come split into blocks still offers it; if the server
+// then refuses, nothing is saved and the toast says why, in its words.
+test("a refused download says why", async () => {
+  const { saved, restore } = catchSaves();
+  try {
+    await mountAt("/wiki/notes/huge.md");
+    await act(async () => document.querySelector<HTMLElement>("article [aria-label='Download CSV']")!.click());
+    await act(async () => {});
+    expect(saved).toEqual([]);
+    expect(toastText()).toBe("Can't download: this page has 2 tables, and a dataset holds one.");
+  } finally {
+    restore();
+  }
+});
+
+// While a download is on its way, its button is busy and can't be clicked
+// again, so one click saves one file (Dessy).
+test("a download in flight can't be started twice", async () => {
+  const { saved, restore } = catchSaves();
+  try {
+    await mountAt("/wiki/notes/slow.md");
+    const csv = () => document.querySelector<HTMLButtonElement>("article [aria-label='Download CSV']")!;
+    csv().focus();
+    await act(async () => csv().click());
+    // Busy, yet still focusable: a keyboard user's focus stays on it (Dessy).
+    expect(csv().getAttribute("aria-disabled")).toBe("true");
+    expect(csv().getAttribute("aria-busy")).toBe("true");
+    expect(csv().disabled).toBe(false);
+    expect(document.activeElement).toBe(csv());
+    await act(async () => csv().click());
+    await act(async () => releaseTable());
+    await act(async () => {});
+    expect(saved.length).toBe(1);
+    expect(csv().getAttribute("aria-disabled")).toBe("false");
+    expect(document.activeElement).toBe(csv());
+  } finally {
+    restore();
+  }
+});
+
+// A download that never reached the server says so in the app's words, not
+// the browser's (Dessy).
+test("a download that can't reach WikiShell says so", async () => {
+  const { saved, restore } = catchSaves();
+  try {
+    await mountAt("/wiki/notes/offline.md");
+    await act(async () => document.querySelector<HTMLElement>("article [aria-label='Download CSV']")!.click());
+    await act(async () => {});
+    expect(saved).toEqual([]);
+    expect(toastText()).toBe("Can't download: WikiShell didn't answer.");
+  } finally {
+    restore();
+  }
 });

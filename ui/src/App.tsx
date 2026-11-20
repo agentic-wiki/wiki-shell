@@ -10,6 +10,7 @@ import { ClearSelection } from "@/shell/ClearSelection";
 import { EntryView } from "@/views/EntryView";
 import { FolderView } from "@/views/FolderView";
 import { ChangedView } from "@/views/ChangedView";
+import { ChangesView } from "@/changes/ChangesView";
 import { ReadLaterView } from "@/views/ReadLaterView";
 import { BoardView } from "@/views/BoardView";
 import { GraphView } from "@/views/GraphView";
@@ -237,6 +238,8 @@ function Reader({
             />
           }
         />
+        {/* Every uncommitted change, to review and commit or discard. */}
+        <Route path="/changes" element={<ChangesView refresh={refresh} />} />
         <Route
           path="/read-later"
           element={<ReadLaterView queue={queue} tree={tree} rootLabel={bundle.label} />}

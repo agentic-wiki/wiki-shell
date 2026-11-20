@@ -15,6 +15,7 @@ package git
 import (
 	"context"
 	"errors"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -53,8 +54,8 @@ type Status struct {
 	// editing alongside is the expected case, and a preview that hid its work
 	// would be lying about what the button does.
 	Changes []Change `json:"changes"`
-	// Outside counts files staged elsewhere in the same repository, which a sync
-	// will not commit.
+	// Outside counts files staged elsewhere in the same repository, which a
+	// commit here will not include.
 	//
 	// Worth saying precisely because it is not going to happen: somebody who
 	// staged work in a terminal and then pressed a button called "commit and
@@ -127,13 +128,13 @@ func Repo(dir string) Status {
 		}
 	}
 	s.Changes = changes(dir)
-	s.Outside = outside(dir)
+	s.Outside = Outside(dir)
 	return s
 }
 
-// outside counts staged files that a sync will leave alone, because they are in
+// Outside counts staged files that a commit here leaves alone, because they are in
 // the repository but not in the bundle.
-func outside(dir string) int {
+func Outside(dir string) int {
 	// The bundle's own path from the repository root. Empty when they are the
 	// same folder, which needs no special case: an empty prefix matches every
 	// path, so nothing is outside a bundle that is the whole repository.
@@ -220,17 +221,39 @@ func changes(dir string) []Change {
 	return list
 }
 
-// run executes git in dir and returns its trimmed stdout.
+// run executes git in dir and returns its stdout without the trailing newline.
 //
 // stderr travels in the error, because git says the useful part there: "there is
 // no tracking information for the current branch" is the answer, and swallowing
 // it would leave a caller reporting "exit status 1".
 func run(ctx context.Context, dir string, args ...string) (string, error) {
+	return runWith(ctx, dir, nil, "", args...)
+}
+
+// runWith is run with extra environment and a standard input.
+func runWith(ctx context.Context, dir string, env []string, stdin string, args ...string) (string, error) {
+	out, err := runRaw(ctx, dir, env, stdin, args...)
+	// Only the trailing newline. Trimming all whitespace would eat the leading
+	// space of a porcelain status line, where the first two columns are the
+	// answer and a space is one of the values they take: " M index.md" became
+	// "M index.md" and every path lost its first character.
+	return strings.TrimRight(out, "\r\n"), err
+}
+
+// runRaw is runWith that keeps stdout exactly, trailing newline included: a
+// file's content, a diff.
+func runRaw(ctx context.Context, dir string, env []string, stdin string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
+	if env != nil {
+		cmd.Env = append(os.Environ(), env...)
+	}
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -243,9 +266,5 @@ func run(ctx context.Context, dir string, args ...string) (string, error) {
 		}
 		return "", err
 	}
-	// Only the trailing newline. Trimming all whitespace would eat the leading
-	// space of a porcelain status line, where the first two columns are the
-	// answer and a space is one of the values they take: " M index.md" became
-	// "M index.md" and every path lost its first character.
-	return strings.TrimRight(string(out), "\r\n"), nil
+	return string(out), nil
 }

@@ -21,15 +21,7 @@ func newGitServer(t *testing.T) (*Server, string) {
 	if !git.Available() {
 		t.Skip("git is not installed")
 	}
-	run := func(dir string, args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
-		}
-	}
+	run := func(dir string, args ...string) { t.Helper(); gitIn(t, dir, args...) }
 	root := t.TempDir()
 	remote := filepath.Join(root, "remote.git")
 	run(root, "init", "--bare", "--initial-branch=main", remote)
@@ -55,7 +47,9 @@ func newGitServer(t *testing.T) (*Server, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(s, nil, "localhost", 0), remote
+	srv := New(s, nil, "localhost", 0)
+	srv.shadow = git.NewShadow(t.TempDir())
+	return srv, remote
 }
 
 func gitStatus(t *testing.T, srv *Server, path string) gitResult {
@@ -90,33 +84,46 @@ func TestGitStatusPreviewsWhatWouldBeCommitted(t *testing.T) {
 	}
 }
 
-func TestSyncCommitsPushesAndRebuilds(t *testing.T) {
+// Push sends the branch's commits to its upstream, and commits nothing.
+func TestPushSendsTheCommits(t *testing.T) {
 	srv, remote := newGitServer(t)
-	before := srv.store.View().Version
-	if err := os.WriteFile(filepath.Join(srv.store.Dir, "note.md"), []byte("---\ntype: note\n---\nn\n"), 0o644); err != nil {
+	dir := srv.store.Dir
+	if err := os.WriteFile(filepath.Join(dir, "note.md"), []byte("---\ntype: note\n---\nn\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "add", "note.md")
+	gitIn(t, dir, "commit", "--quiet", "--message", "add a note")
+	if err := os.WriteFile(filepath.Join(dir, "draft.md"), []byte("---\ntype: note\n---\nd\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	var got gitResult
-	code, _ := send(t, srv, http.MethodPost, "/api/git/sync", map[string]string{"message": "add a note"})
-	if code != http.StatusOK {
-		t.Fatalf("POST = %d", code)
+	if code, body := call(t, srv, http.MethodPost, "/api/git/push", "{}"); code != http.StatusOK || json.Unmarshal(body, &got) != nil {
+		t.Fatalf("POST = %d %s", code, body)
 	}
-	got = gitStatus(t, srv, "/api/git")
-	if len(got.Status.Changes) != 0 {
-		t.Errorf("the tree is still dirty: %+v", got.Status.Changes)
+	if got.Status.Ahead != 0 {
+		t.Errorf("still ahead by %d", got.Status.Ahead)
 	}
-	// On the remote, which is the only proof that matters.
-	out, err := exec.Command("git", "-C", remote, "log", "--oneline", "-1").Output()
-	if err != nil || !strings.Contains(string(out), "add a note") {
+	out, err := exec.Command("git", "-C", remote, "log", "--format=%s", "-1").Output()
+	if err != nil || strings.TrimSpace(string(out)) != "add a note" {
 		t.Errorf("the remote's last commit is %q (%v)", out, err)
 	}
-	// And the index is untouched, because a commit does not change a working
-	// file. Only a pull moves content under the reader, which is why that one
-	// rebuilds and this one has nothing to rebuild from.
-	if srv.store.View().Version != before {
-		t.Error("a sync moved the version, and nothing on disk changed")
+	if len(got.Status.Changes) != 1 || got.Status.Changes[0].Path != "draft.md" {
+		t.Errorf("the draft was committed: %+v", got.Status.Changes)
 	}
+}
+
+// gitIn runs git in dir with the machine's own config left out.
+func gitIn(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // The rule the task turns on, end to end: the failure is reported, the tree is
@@ -124,15 +131,7 @@ func TestSyncCommitsPushesAndRebuilds(t *testing.T) {
 func TestAFailedPullAnswersWithTheWayOut(t *testing.T) {
 	srv, remote := newGitServer(t)
 	dir := srv.store.Dir
-	run := func(where string, args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = where
-		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
-		}
-	}
+	run := func(where string, args ...string) { t.Helper(); gitIn(t, where, args...) }
 	other := filepath.Join(t.TempDir(), "other")
 	run(filepath.Dir(other), "clone", "--quiet", remote, other)
 	for _, kv := range [][2]string{{"user.email", "o@e.com"}, {"user.name", "o"}, {"commit.gpgsign", "false"}} {
@@ -175,6 +174,16 @@ func TestAFailedPullAnswersWithTheWayOut(t *testing.T) {
 	out, _ := exec.Command("git", "-C", remote, "branch", "--list", body.Proposed).Output()
 	if !strings.Contains(string(out), body.Proposed) {
 		t.Errorf("the remote has no such branch: %q", out)
+	}
+}
+
+// A name that isn't a branch name is bad input: 422, and nothing is made.
+func TestARefusedBranchNameIs422(t *testing.T) {
+	srv, _ := newGitServer(t)
+	for _, name := range []string{"-x", "a..b", "x.lock"} {
+		if code, _ := send(t, srv, http.MethodPost, "/api/git/branch", map[string]string{"name": name}); code != http.StatusUnprocessableEntity {
+			t.Errorf("%q: %d", name, code)
+		}
 	}
 }
 

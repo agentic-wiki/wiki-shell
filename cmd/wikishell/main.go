@@ -54,6 +54,7 @@ type options struct {
 	host    string
 	port    int
 	version bool
+	edit    bool
 }
 
 // parseArgs reads the command line: `wikishell [path] [flags]`, in any order.
@@ -78,6 +79,7 @@ func parseArgs(args []string) (options, error) {
 	host := fs.String("host", "localhost", "interface to listen on; any non-loopback address (0.0.0.0 for all) prints a link with a token")
 	port := fs.Int("port", 8080, "port to listen on")
 	showVersion := fs.Bool("version", false, "print the version and exit")
+	edit := fs.Bool("edit", false, "on a network address, let anyone with the link edit pages, commit and push as you (it means nothing on localhost, where editing is always on)")
 
 	var positional []string
 	for {
@@ -92,7 +94,7 @@ func parseArgs(args []string) (options, error) {
 		args = rest[1:]
 	}
 
-	opts := options{root: ".", host: *host, port: *port, version: *showVersion}
+	opts := options{root: ".", host: *host, port: *port, version: *showVersion, edit: *edit}
 	// Accepted as a bare word too, matching `wiki version`.
 	if len(positional) == 1 && positional[0] == "version" {
 		opts.version = true
@@ -121,6 +123,9 @@ func run(opts options) error {
 	}
 	port := ln.Addr().(*net.TCPAddr).Port
 	srv := server.New(s, ui.Assets(), opts.host, port)
+	if opts.edit {
+		srv.AllowEdits()
+	}
 	if err := srv.MigrateConfig(); err != nil {
 		return err
 	}
@@ -130,6 +135,9 @@ func run(opts options) error {
 	// or a Referer.
 	log.Printf("serving %s (%d entries)", s.Dir, len(idx.Entries))
 	log.Printf("open %s", srv.URL())
+	if notice := srv.EditNotice(); notice != "" {
+		log.Print(notice)
+	}
 
 	// `wiki` never looks inside `[[board]]` and `[[graph]]`, deliberately, so nothing else will
 	// ever tell you that a board points at a folder you renamed or that a key is
@@ -172,6 +180,8 @@ func run(opts options) error {
 	}
 	errc := make(chan error, 1)
 	go func() { errc <- httpSrv.Serve(ln) }()
+	// After Shutdown has returned: a commit still running keeps its folder.
+	defer srv.RemoveShadow()
 
 	select {
 	case err := <-errc:

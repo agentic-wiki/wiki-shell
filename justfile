@@ -76,6 +76,11 @@ build: ui-build
 smoke: build
     bash scripts/smoke.sh ./bin/wikishell
 
+# The editor in a real browser: its content matches the reader's, and outside changes come in safely (needs Foreman's `just browser` install: pass its current-<cpu> folder)
+[group('test')]
+ui-content browser: build
+    bash -c '. "{{browser}}/env.sh" && node ui/e2e/content.mjs bin/wikishell "{{browser}}" && node ui/e2e/outside.mjs bin/wikishell "{{browser}}" && node ui/e2e/kept_bundle.mjs bin/wikishell "{{browser}}" && node ui/e2e/kept_overwrite.mjs bin/wikishell "{{browser}}" && node ui/e2e/editing.mjs bin/wikishell "{{browser}}" && node ui/e2e/paste.mjs bin/wikishell "{{browser}}" && node ui/e2e/changes.mjs bin/wikishell "{{browser}}"'
+
 # Everything: unit, UI, and end-to-end
 [group('test')]
 test-all: test ui-test smoke

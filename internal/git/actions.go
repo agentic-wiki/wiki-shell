@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -50,41 +51,6 @@ func Pull(ctx context.Context, dir string) (Status, error) {
 	return Repo(dir), nil
 }
 
-// Sync commits what is in the bundle and pushes it.
-//
-// **Every step carries the bundle's pathspec.** A bundle can be a subdirectory
-// of a larger repository, and somebody who staged unrelated work in a terminal
-// must not find it inside a commit a notes viewer made. Staging with `add -- .`
-// is not enough on its own: `git commit` with no pathspec commits the whole
-// index, sweeping up whatever else was sitting in it.
-func Sync(ctx context.Context, dir, message string) (Status, error) {
-	// Asked before anything is staged, so a sync rejected for want of a message
-	// leaves the index exactly as it found it. Staging first and refusing after
-	// would hand back a bundle staged by a button somebody never got to press.
-	//
-	// Nothing to commit is not a failure, and it is the ordinary case for a
-	// bundle whose commits were made elsewhere: there is nothing to say about a
-	// commit that is not happening, so no message is asked for and this is a push.
-	committing := len(changes(dir)) > 0
-	if committing && strings.TrimSpace(message) == "" {
-		return Repo(dir), fmt.Errorf("a commit needs a message")
-	}
-	if committing {
-		// Staged so the commit is exactly what the preview listed: `commit -a`
-		// would miss untracked files, which is most of what a new entry is.
-		if _, err := run(ctx, dir, "add", "--", "."); err != nil {
-			return Repo(dir), err
-		}
-		if _, err := run(ctx, dir, "commit", "--message", message, "--", "."); err != nil {
-			return Repo(dir), commitError(err)
-		}
-	}
-	if _, err := run(ctx, dir, "push"); err != nil {
-		return Repo(dir), err
-	}
-	return Repo(dir), nil
-}
-
 // Branch pushes the current work to a new branch on the remote.
 //
 // The way out of a failed pull. The local commits are already safe on disk; what
@@ -96,24 +62,33 @@ func Sync(ctx context.Context, dir, message string) (Status, error) {
 // rescuing their work.
 func Branch(ctx context.Context, dir, name string) (Status, error) {
 	if !validBranch.MatchString(name) {
-		return Repo(dir), fmt.Errorf("%q is not a branch name", name)
+		return Repo(dir), fmt.Errorf("%w: %q", ErrBadBranch, name)
 	}
-	if _, err := run(ctx, dir, "branch", name); err != nil {
+	// git's own rule too, and the name always after `--`, so it is never read
+	// as an option.
+	if _, err := run(ctx, dir, "check-ref-format", "--branch", name); err != nil {
+		return Repo(dir), fmt.Errorf("%w: %q", ErrBadBranch, name)
+	}
+	if _, err := run(ctx, dir, "branch", "--", name); err != nil {
 		return Repo(dir), err
 	}
 	// No `--set-upstream`: this is a place to put the work, not a branch to move
 	// onto, and rewriting the tracking of the branch somebody is on would be a
 	// side effect of a rescue.
-	if _, err := run(ctx, dir, "push", "origin", name); err != nil {
+	if _, err := run(ctx, dir, "push", "--", "origin", name); err != nil {
 		// Leave no half-made branch behind: it was created for this push, and a
 		// dangling local branch is litter somebody has to notice and clean up.
-		_, _ = run(ctx, dir, "branch", "--delete", name)
+		_, _ = run(ctx, dir, "branch", "--delete", "--", name)
 		return Repo(dir), err
 	}
 	return Repo(dir), nil
 }
 
-// validBranch is deliberately narrower than git's own rule.
+// ErrBadBranch is a rescue name that isn't a branch name.
+var ErrBadBranch = errors.New("not a branch name")
+
+// validBranch is deliberately narrower than git's own rule, and starts with a
+// letter or digit, so a name is never an option.
 //
 // This name is proposed by the UI and confirmed by a person, so it only has to
 // admit the names that proposal produces and the ones somebody would type in its

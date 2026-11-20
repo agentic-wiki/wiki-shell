@@ -224,7 +224,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// `frame-ancestors` is the current spelling of the same rule; both are set
 	// because a browser honours whichever it knows.
 	w.Header().Set("X-Frame-Options", "DENY")
-	w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
+	w.Header().Set("Content-Security-Policy", csp)
 	w.Header().Set("Referrer-Policy", "no-referrer")
 
 	// The address first, and only on loopback: a request for a host we do not
@@ -240,6 +240,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		if !s.tokenAllowed(r) {
 			writeJSON(w, http.StatusUnauthorized, s.refusal())
+			return
+		}
+		// A network bind without --edit is read-only for everyone, checked
+		// here, before routing, so a new write endpoint can't miss it. Refresh
+		// only re-reads the files.
+		if !s.editable() && r.Method != http.MethodGet && r.Method != http.MethodHead &&
+			!(r.Method == http.MethodPost && r.URL.Path == "/api/refresh") {
+			writeJSON(w, http.StatusForbidden, errorBody{readOnly})
 			return
 		}
 		if s.networked() {
@@ -260,6 +268,42 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mux.ServeHTTP(w, r)
+}
+
+// csp is the Content-Security-Policy of every response: the app's own scripts,
+// styles and connections only, nothing embedded, no forms elsewhere, and images
+// from here or any https: site (a remote image still waits for a click in the
+// app; this is the backstop for the scheme). ProseMirror sets styles through
+// the CSSOM, which `style-src 'self'` doesn't block.
+const csp = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https:; " +
+	"connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+
+// readOnly is the one refusal of a write on a network bind without --edit.
+const readOnly = "This wiki is read-only on this address: start WikiShell with --edit to change it."
+
+// editable says whether writes are taken: always on loopback, and on a network
+// bind only with --edit.
+func (s *Server) editable() bool {
+	return !s.networked() || s.edit
+}
+
+// AllowEdits lets a network bind take writes (--edit). It means nothing on
+// loopback, which always does. Called before the server serves.
+func (s *Server) AllowEdits() {
+	s.edit = true
+}
+
+// EditNotice is what the terminal says about writes at start: nothing on
+// loopback, where editing is on; on a network address, either who can edit
+// (with --edit) or that it is read-only.
+func (s *Server) EditNotice() string {
+	switch {
+	case !s.networked():
+		return ""
+	case s.edit:
+		return "anyone with this link can edit pages, commit and push as you"
+	}
+	return "read-only on this address: start with --edit to let the link edit pages"
 }
 
 // isUnder reports whether a path is root (`/api`, `/raw`) or below it.

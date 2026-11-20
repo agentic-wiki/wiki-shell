@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import { useEscape } from "@/ui/escape";
 import { Glyph, IconButton } from "@/ui/IconButton";
 import { api, ApiError, type GitResult, type GitStatus } from "@/api";
@@ -9,9 +10,10 @@ import { useToast } from "@/ui/Toast";
 
 /**
  * Refresh, and the repository: a pill that says where the branch stands and a
- * popover that pulls and pushes (backlog/8-design/005).
+ * popover that pulls and pushes (backlog/8-design/005). Committing is the
+ * changes view's (/changes): the popover lists what changed and opens it.
  *
- * Pull and sync are the first things WikiShell does that reach outside the
+ * Pull and push are the first things WikiShell does that reach outside the
  * machine and the first that are hard to take back, so they are shaped
  * accordingly: each tab shows what its button will do, and nothing happens until
  * it is pressed.
@@ -96,6 +98,11 @@ export function GitActions({
 }
 
 export type GitTab = "incoming" | "changes";
+
+/** The repository's status as the shell holds it, for the views that change
+ *  it: the changes view commits, and the pill shows the result at once. */
+export const GitContext = createContext<[GitStatus | null, (status: GitStatus) => void]>([null, () => {}]);
+export const useGit = () => useContext(GitContext);
 type Tab = GitTab;
 
 /**
@@ -211,7 +218,6 @@ function Popover({
   onClose: () => void;
   anchor: React.RefObject<HTMLDivElement | null>;
 }) {
-  const [message, setMessage] = useState(() => proposeMessage(status.changes));
   // Acting, as opposed to the read Incoming does on opening. Two states because
   // the button names what it is doing, and "Pulling…" during a fetch would name
   // the wrong thing.
@@ -227,6 +233,8 @@ function Popover({
   const [rescued, setRescued] = useState<string | null>(null);
 
   const toast = useToast();
+  const navigate = useNavigate();
+  const { bundle } = useBundle();
 
   // Escape, and a press anywhere outside the pill and the popover, close it.
   useEscape(onClose);
@@ -279,9 +287,6 @@ function Popover({
   };
 
   const changed = status.changes.length;
-  // A sync with nothing staged is a push, and says so: asking to "commit and
-  // push" when no commit is coming describes the wrong action.
-  const nothingToPush = changed === 0 && status.ahead === 0;
 
   return (
     <div
@@ -396,13 +401,10 @@ function Popover({
         ) : (
           <>
             <p className="text-muted mx-0.5">
-              {nothingToPush
-                ? "Nothing to sync: no changes here and nothing waiting to push."
-                : `${changed} file${changed === 1 ? "" : "s"} to commit, ${status.ahead} commit${status.ahead === 1 ? "" : "s"} to push.`}
+              {`${count(changed, "file")} changed, ${count(status.ahead, "commit")} to push.`}
             </p>
-            {/* Everything that would be committed, including work somebody else
-                did: an agent editing alongside is the expected case, and a
-                preview that hid its files would misdescribe the button. */}
+            {/* Everything a commit could take, including work somebody else
+                did: an agent editing alongside is the expected case. */}
             <ul className="border-line max-h-48 overflow-y-auto rounded-[10px] border">
               {status.changes.map((c) => (
                 <li
@@ -417,31 +419,18 @@ function Popover({
               ))}
               {changed === 0 && <li className="text-faint p-4.5 text-center">Working tree clean.</li>}
             </ul>
-            {/* Staged work this sync will step around. Said because it is not
-                going to happen: somebody who staged files in a terminal and
-                then pressed a button called "commit and push" has every
-                reason to think both got committed. Only alongside a commit,
-                since that is the sentence's subject. */}
-            {changed > 0 && status.outside > 0 && (
-              <p className="text-warn bg-warn/8 border-warn/25 rounded-lg border px-2.5 py-2 text-xs">
-                {status.outside} staged file{status.outside === 1 ? "" : "s"} elsewhere in this
-                repository {status.outside === 1 ? "is" : "are"} outside the bundle, and will not be
-                committed. Handle {status.outside === 1 ? "it" : "them"} in a terminal.
-              </p>
-            )}
-            {/* Only when something would be committed: asking for a message for
-                a commit that is not happening is a box to dismiss on the way
-                to a push. */}
+            {/* The one place to commit is the changes view, with the diff. */}
             {changed > 0 && (
-              <label className="block">
-                <span className="text-muted mx-0.5 mb-1.5 block text-xs font-medium">Commit message</span>
-                <input
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  aria-label="Commit message"
-                  className="border-line-2 bg-panel-2 focus:border-accent h-9 w-full rounded-[9px] border px-3 outline-none"
-                />
-              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  navigate("/changes");
+                }}
+                className="border-line-2 text-fg hover:bg-fg/5 h-8.5 w-full rounded-[9px] border font-medium"
+              >
+                {bundle.editable ? "Review and commit" : "Review changes"}
+              </button>
             )}
           </>
         )}
@@ -461,15 +450,10 @@ function Popover({
             </Primary>
           ) : (
             <Primary
-              disabled={busy || nothingToPush}
-              onClick={() =>
-                act(
-                  () => api.gitSync(message),
-                  changed > 0 ? `Committed ${count(changed, "file")} and pushed` : `Pushed ${count(status.ahead, "commit")}`,
-                )
-              }
+              disabled={busy || status.ahead === 0}
+              onClick={() => act(() => api.gitPush(), `Pushed ${count(status.ahead, "commit")}`)}
             >
-              {busy ? "Pushing…" : changed > 0 ? "Commit & push" : "Push"}
+              {busy ? "Pushing…" : "Push"}
             </Primary>
           )}
         </div>
@@ -506,37 +490,4 @@ function Primary({
 function changeLetter(code: string): string {
   if (code === "??") return "?";
   return code.trim()[0] ?? "M";
-}
-
-/**
- * The commit message a sync starts with.
- *
- * Derived from what changed, because the alternatives are worse in both
- * directions. An empty box asks somebody to name work they just watched an agent
- * do, every time, for a log nobody reads that closely. A fixed string with the
- * date in it — "Update notes 2026-08-12 14:30" — says nothing a commit does not
- * already carry: git records when, and repeating it in the subject line is
- * duplicating metadata git owns while still saying nothing about the change.
- *
- * So: name the file when there is one, count them when there are several. It is
- * a starting point in an editable box, not a decision — anybody with something
- * better to say types it.
- */
-export function proposeMessage(changes: { path: string }[]): string {
-  if (changes.length === 0) return "Update notes";
-  if (changes.length === 1) return "Update " + changes[0]!.path;
-  const folder = commonFolder(changes.map((c) => c.path));
-  return `Update ${changes.length} entries` + (folder ? " in " + folder : "");
-}
-
-/** The folder every path shares, or "" when they share none. */
-function commonFolder(paths: string[]): string {
-  const parts = paths.map((p) => p.split("/").slice(0, -1));
-  const shared: string[] = [];
-  for (let i = 0; i < (parts[0]?.length ?? 0); i++) {
-    const segment = parts[0]![i]!;
-    if (!parts.every((p) => p[i] === segment)) break;
-    shared.push(segment);
-  }
-  return shared.join("/");
 }

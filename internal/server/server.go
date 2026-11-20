@@ -18,6 +18,7 @@ import (
 	"sync"
 
 	"github.com/agentic-wiki/wiki-shell/internal/config"
+	"github.com/agentic-wiki/wiki-shell/internal/git"
 	"github.com/agentic-wiki/wiki-shell/internal/store"
 	"github.com/agentic-wiki/wiki/index"
 )
@@ -56,6 +57,19 @@ type Server struct {
 	// acting serialises the git actions. They mutate one worktree, and two of
 	// them at once is a rebase running under a commit.
 	acting sync.Mutex
+	// editing serialises page writes (blocks, fields, a new page): each reads,
+	// merges and writes a file, so two at once would lose one. A handler that
+	// needs both takes acting first.
+	editing sync.Mutex
+	// lists is what one listing of the changes keeps for the next.
+	lists listCache
+	// history keeps recent block lists, for `GET /api/blocks?since=`.
+	history *history
+	// shadow is the changes view's shadow index and objects, in the user's
+	// cache folder, deleted by Close.
+	shadow *git.Shadow
+	// edit lets a network bind write (--edit). Loopback always may.
+	edit bool
 }
 
 // New builds the server. ui is the built frontend, or nil to serve the API only
@@ -68,6 +82,8 @@ func New(s *store.Store, ui fs.FS, bindHost string, port int) *Server {
 	srv := &Server{
 		store:    s,
 		events:   newBroker(),
+		history:  newHistory(),
+		shadow:   git.NewShadow(""),
 		ui:       ui,
 		mux:      http.NewServeMux(),
 		id:       bundleID(s.View().Index.Bundle.Dir),
@@ -80,35 +96,60 @@ func New(s *store.Store, ui fs.FS, bindHost string, port int) *Server {
 		srv.token = newSecret()
 		srv.rawSecret = newSecret()
 	}
-	srv.mux.HandleFunc("GET /api/bundle", srv.handleBundle)
-	srv.mux.HandleFunc("GET /api/entry/{path...}", srv.handleEntry)
-	srv.mux.HandleFunc("GET /api/tree", srv.handleTree)
-	srv.mux.HandleFunc("GET /api/board/{id}", srv.handleBoard)
-	srv.mux.HandleFunc("GET /api/graph/{id}", srv.handleGraph)
-	srv.mux.HandleFunc("GET /api/draft/{kind}/{path...}", srv.handleDraft)
-	srv.mux.HandleFunc("GET /api/events", srv.handleEvents)
-	// The wildcard has to be the final segment, so the verb leads the path
-	// rather than trailing it.
-	srv.mux.HandleFunc("PUT /api/checkbox/{path...}", srv.handleCheckbox)
-	srv.mux.HandleFunc("PUT /api/card/{id}/{path...}", srv.handleCard)
-	srv.mux.HandleFunc("POST /api/board", srv.handleDeclareBoard)
-	srv.mux.HandleFunc("POST /api/graph", srv.handleDeclareGraph)
-	srv.mux.HandleFunc("PUT /api/graph/{id}", srv.handleGraphSettings)
-	srv.mux.HandleFunc("POST /api/refresh", srv.handleRefresh)
-	// Git, which is optional: a bundle is a folder and need not be a repository.
-	// The status says so, and the actions are absent rather than broken.
-	srv.mux.HandleFunc("GET /api/git", srv.handleGitStatus)
-	srv.mux.HandleFunc("POST /api/git/fetch", srv.handleGitFetch)
-	srv.mux.HandleFunc("POST /api/git/pull", srv.handleGitPull)
-	srv.mux.HandleFunc("POST /api/git/sync", srv.handleGitSync)
-	srv.mux.HandleFunc("POST /api/git/branch", srv.handleGitBranch)
-	srv.mux.HandleFunc("PUT /api/board/{id}", srv.handleBoardSettings)
-	// Files the bundle links to but does not index. Outside /api because it is
-	// not JSON: an <img src> and a new tab both want the file itself.
-	srv.mux.HandleFunc("GET /raw/{path...}", srv.handleRaw)
-	// Everything not under /api belongs to the app.
-	srv.mux.HandleFunc("GET /", srv.serveUI)
+	for _, rt := range srv.routes() {
+		srv.mux.HandleFunc(rt.pattern, rt.handler)
+	}
 	return srv
+}
+
+// route is one endpoint: its method and path pattern, and its handler.
+type route struct {
+	pattern string
+	handler http.HandlerFunc
+}
+
+// routes is every endpoint, in one list, so a test can walk them all (every
+// GET is read-only). A wildcard has to be the final segment, so a verb leads
+// the path rather than trailing it.
+func (s *Server) routes() []route {
+	return []route{
+		{"GET /api/bundle", s.handleBundle},
+		{"GET /api/entry/{path...}", s.handleEntry},
+		{"GET /api/tree", s.handleTree},
+		{"GET /api/board/{id}", s.handleBoard},
+		{"GET /api/graph/{id}", s.handleGraph},
+		{"GET /api/draft/{kind}/{path...}", s.handleDraft},
+		{"GET /api/events", s.handleEvents},
+		{"GET /api/blocks/{path...}", s.handleBlocks},
+		{"GET /api/table/{path...}", s.handleTable},
+		{"PUT /api/blocks/{path...}", s.handleSave},
+		{"PUT /api/fields/{path...}", s.handleFields},
+		{"POST /api/entries", s.handleCreate},
+		{"PUT /api/card/{id}/{path...}", s.handleCard},
+		{"POST /api/board", s.handleDeclareBoard},
+		{"POST /api/graph", s.handleDeclareGraph},
+		{"PUT /api/graph/{id}", s.handleGraphSettings},
+		{"POST /api/refresh", s.handleRefresh},
+		// Git, which is optional: a bundle is a folder and need not be a
+		// repository. The status says so, and the actions are absent rather
+		// than broken.
+		{"GET /api/git", s.handleGitStatus},
+		{"POST /api/git/fetch", s.handleGitFetch},
+		{"POST /api/git/pull", s.handleGitPull},
+		{"POST /api/git/push", s.handleGitPush},
+		// The changes view: what isn't committed, its diffs, discard and commit.
+		{"GET /api/changes", s.handleChanges},
+		{"GET /api/changes/{path...}", s.handleChange},
+		{"POST /api/changes/discard", s.handleDiscard},
+		{"POST /api/commit", s.handleCommit},
+		{"POST /api/git/branch", s.handleGitBranch},
+		{"PUT /api/board/{id}", s.handleBoardSettings},
+		// Files the bundle links to but does not index. Outside /api because
+		// it is not JSON: an <img src> and a new tab both want the file itself.
+		{"GET /raw/{path...}", s.handleRaw},
+		// Everything not under /api belongs to the app.
+		{"GET /", s.serveUI},
+	}
 }
 
 // BundleInfo is what a client needs to know about the bundle itself, as opposed
@@ -129,6 +170,9 @@ type BundleInfo struct {
 	Entries int      `json:"entries"`
 	Tools   []string `json:"tools"`   // [tool.*] tables present in wiki.toml
 	Version uint64   `json:"version"` // matches the SSE stream; compare to know you are stale
+	// Editable says whether this server takes writes: always on loopback, and
+	// on a network address only when started with --edit.
+	Editable bool `json:"editable"`
 	// Boards are the boards declared in `[[board]]`, with their defaults
 	// filled in. Only the ones with an id, since an id is what a board is
 	// addressed by and listing one without an address offers a dead link.
@@ -141,6 +185,9 @@ type BundleInfo struct {
 	// position in this list, so one tag is one colour on every surface — and the
 	// list is the server's, so no client has to agree with another about it.
 	Tags []string `json:"tags"`
+	// Types are the types wiki.toml declares, in its order, for an editor to
+	// offer: empty when types are free-form.
+	Types []string `json:"types"`
 }
 
 // BoardInfo is a declared board and how many cards it holds, so a list of
@@ -209,16 +256,18 @@ func (s *Server) handleBundle(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, BundleInfo{
-		ID:      s.id,
-		Label:   dirLabel(v.Index.Bundle.Dir),
-		Dir:     v.Index.Bundle.Dir,
-		Spec:    v.Index.Bundle.Spec,
-		Entries: len(v.Index.Entries),
-		Tools:   v.Index.Bundle.Tools(),
-		Version: v.Version,
-		Boards:  boards,
-		Graphs:  graphs,
-		Tags:    tagsInOrder(v.Index),
+		ID:       s.id,
+		Label:    dirLabel(v.Index.Bundle.Dir),
+		Dir:      v.Index.Bundle.Dir,
+		Spec:     v.Index.Bundle.Spec,
+		Entries:  len(v.Index.Entries),
+		Tools:    v.Index.Bundle.Tools(),
+		Version:  v.Version,
+		Editable: s.editable(),
+		Boards:   boards,
+		Graphs:   graphs,
+		Tags:     tagsInOrder(v.Index),
+		Types:    append([]string{}, v.Index.Bundle.Types...),
 	})
 }
 

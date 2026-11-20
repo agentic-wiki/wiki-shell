@@ -8,14 +8,14 @@ const entries = Array.from({ length: 12 }, (_, i) => ({
   ...(i === 1 ? { title: "The pivot" } : {}),
 }));
 const command = (title: string, sub = ""): Command => ({ title, sub, kind: "Action", run: () => {} });
-const commands = ["Pull", "Commit & push…", "Toggle theme", "Open board · Backlog", "Read later"].map((t) => command(t));
+const commands = ["Pull", "Push", "Toggle theme", "Open board · Backlog", "Read later"].map((t) => command(t));
 const names = (items: ReturnType<typeof paletteItems>) => items.map((i) => (i.entry ? i.entry.path : i.command.title));
 
 // Nothing typed: something to do, somewhere to go, and more of each.
 test("with no query: three commands, five entries, then the other commands", () => {
   expect(names(paletteItems(entries, commands, "  "))).toEqual([
     "Pull",
-    "Commit & push…",
+    "Push",
     "Toggle theme",
     "/notes/e0.md",
     "/notes/e1.md",

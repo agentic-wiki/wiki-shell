@@ -69,6 +69,7 @@ function subject(bundle: BundleInfo, tree: TreeNode, pathname: string): string |
   // own headings. A route this cannot name reads as the tab losing track of where
   // you are.
   if (pathname.startsWith("/changed")) return "Recently changed";
+  if (pathname.startsWith("/changes")) return "Changes";
   if (pathname.startsWith("/read-later")) return "Read later";
   return undefined;
 }

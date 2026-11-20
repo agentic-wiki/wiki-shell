@@ -214,6 +214,15 @@ func (s *Server) Close() {
 	}
 }
 
+// RemoveShadow deletes the changes view's shadow folder; any later use of it
+// fails. Called once the HTTP server has shut down, so a commit still running
+// during the shutdown keeps its folder.
+func (s *Server) RemoveShadow() {
+	if err := s.shadow.Remove(); err != nil {
+		log.Printf("could not delete the changes view's shadow folder: %v", err)
+	}
+}
+
 // heartbeat is how often a quiet stream says it is still there.
 //
 // The client treats a connection that delivers nothing for twice this as dead

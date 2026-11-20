@@ -1,11 +1,16 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link } from "react-router";
-import { api, type Backlink, type Entry, type Heading, type Ref } from "@/api";
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Link, useNavigate } from "react-router";
+import { api, ApiError, type Backlink, type Entry, type Heading, type Op, type Ref } from "@/api";
 import { isCurrent, recall, remember } from "@/cache";
 import { Markdown } from "@/markdown/Markdown";
 import { useWidth, WidthToggle, type Width } from "@/shell/Width";
 import { useEscape } from "@/ui/escape";
+import { useToast } from "@/ui/Toast";
+import { tickOp } from "@/markdown/tick";
+import { AddField, FieldValue, RemoveField } from "@/views/fields";
+import { dropKept, type Early, editorPrefetch, type Kept, keptAll, putKept, settleSaves, type SaveState, typing, useEditorModule } from "@/editing";
 import { usePeek } from "@/ui/peek";
+import { NotCommitted } from "@/changes/NotCommitted";
 import { useBundle } from "@/bundle";
 import { groupOf, groupsUnder, NEUTRAL, tagColour } from "@/colour";
 import { NARROW, useInlineSize, useMedia } from "@/media";
@@ -15,6 +20,7 @@ import { nameOf } from "@/tree";
 import { Glyph, IconButton } from "@/ui/IconButton";
 import { GroupChip } from "@/ui/GroupChip";
 import { SectionLabel } from "@/ui/SectionLabel";
+import { saveFile } from "@/save";
 import { count } from "@/count";
 import { NotFound } from "@/views/NotFound";
 import { Loading } from "@/views/Loading";
@@ -78,7 +84,7 @@ export function EntryView({
   // content that could hold it exists. A brief stale render is cheaper than a
   // reader that cannot go back.
   const [loaded, setLoaded] = useState<{ path: string; entry: Entry } | null>(null);
-  const [error, setError] = useState<{ path: string; message: string } | null>(null);
+  const [error, setError] = useState<{ path: string; message: string; status?: number } | null>(null);
   const narrow = useMedia(NARROW);
   const [width, setWidth] = useWidth();
   // The room the reader has: the window less whatever panels are open beside
@@ -106,7 +112,7 @@ export function EntryView({
         }
       })
       .catch((e) => {
-        if (!ac.signal.aborted) setError({ path, message: String(e.message ?? e) });
+        if (!ac.signal.aborted) setError({ path, message: String(e.message ?? e), status: (e as { status?: number }).status });
       });
     return () => ac.abort();
   }, [path, refresh, changedAt, version]);
@@ -115,52 +121,78 @@ export function EntryView({
   // on screen in the same commit as the navigation rather than a frame after it.
   // Undefined until a first visit lands, which is when the outgoing entry below
   // keeps the layout — and its scroll position — from collapsing.
+  // The editor's save status for the page on screen. A page left with a save
+  // still failing says so in a toast, since its status has gone with it.
+  const toast = useToast();
+  const navigate = useNavigate();
+  const [save, setSave] = useState<{ path: string; state: SaveState; act: () => void } | null>(null);
+  const here = useRef(path);
+  here.current = path;
+  const statusFor = useCallback(
+    (page: string, title: string) => (state: SaveState, act: () => void) => {
+      if (here.current === page) setSave({ path: page, state, act });
+      else if (state.kind === "failed") {
+        toast(`${title} is not saved yet.`, "danger", { label: "Open it", run: () => navigate("/wiki" + page) });
+      }
+    },
+    [toast, navigate],
+  );
+  const reload = useCallback(async () => {
+    const fresh = await api.entry(path);
+    remember(path, fresh, version);
+    setLoaded({ path, entry: fresh });
+    return fresh;
+  }, [path, version]);
+
   const shown = loaded?.path === path ? loaded.entry : recall(path)?.entry;
   const entry = shown ?? loaded?.entry ?? null;
 
   const toggle = useCallback(
-    async (line: number, done: boolean) => {
+    async (bodyLine: number, done: boolean) => {
       // A checkbox belongs to the entry it was rendered from. While a first
-      // visit is in flight that entry is not the one at `path`, and a line
-      // number means nothing across two files.
+      // visit is in flight that entry is not the one at `path`.
       if (!shown) return;
+      const op = tickOp(shown, bodyLine, done);
+      if (!op) return;
       // Applied optimistically, then confirmed by the refetch the version bump
-      // triggers. A refused write leaves this correction visible only until that
-      // refetch replaces it with the truth.
-      //
-      // Kept as well as shown: without that, navigating away and back would
-      // render the copy taken *before* the tick and read as the write having
-      // failed.
+      // triggers. Kept as well as shown: without that, navigating away and back
+      // would render the copy taken before the tick, and read as a failed write.
       const next = {
         ...shown,
-        checkboxes: shown.checkboxes.map((c) => (c.line === line ? { ...c, done } : c)),
+        checkboxes: shown.checkboxes.map((c) => (c.bodyLine === bodyLine ? { ...c, done } : c)),
       };
       remember(path, next, version);
       setLoaded({ path, entry: next });
+      let failed: string | null = null;
       try {
-        await api.setCheckbox(path, line, done, version);
+        const saved = await api.saveBlocks(path, shown.version, shown.blocks.map((b) => b.hash), [op]);
+        if (saved.conflicts.length > 0) failed = "Not saved: this item changed outside WikiShell.";
       } catch (err) {
-        // A conflict means the file moved underneath: refetch rather than retry,
-        // because the line number this was addressed by may no longer mean the
-        // same thing.
-        setError({ path, message: String((err as Error).message) });
-        api
-          .entry(path)
-          .then((fresh) => {
-            remember(path, fresh, version);
-            setLoaded({ path, entry: fresh });
-          })
-          .catch(() => {});
+        failed = "Not saved: " + String((err as Error).message);
       }
+      if (!failed) return;
+      // The page as it is on disk, which says what the box really is.
+      toast(failed, "danger");
+      api
+        .entry(path)
+        .then((fresh) => {
+          remember(path, fresh, version);
+          setLoaded({ path, entry: fresh });
+        })
+        .catch(() => {});
     },
-    [shown, path, version],
+    [shown, path, version, toast],
   );
 
   // A missing entry is not an error in this format: a link may point at
   // knowledge not yet written. It gets a placeholder, not a stack of red text.
   // Only the current path's failure counts — a 404 left over from an entry you
   // have already navigated away from is not about this one.
-  if (error?.path === path) {
+  // A page on screen in the editor and deleted outside stays: the editor
+  // says so above the body and offers to restore it, and editing goes on (the
+  // design's §3). Anywhere else, a missing entry is the not-found page.
+  const deleted = error?.path === path && error.status === 404 && loaded?.path === path && loaded.entry.editable;
+  if (error?.path === path && !deleted) {
     return <NotFound path={path} hint="There is no entry here yet" />;
   }
   if (!entry) return <Loading />;
@@ -191,6 +223,7 @@ export function EntryView({
             onQueue={onQueue}
             width={widens ? width : undefined}
             onWidth={setWidth}
+            save={save?.path === entry.path ? save : null}
           />
         )}
         {/* The title comes first whichever source it has, so every entry is
@@ -224,7 +257,21 @@ export function EntryView({
             then run <code>wiki check</code>.
           </p>
         )}
-        <Markdown entry={title?.hoisted ?? entry} onToggleCheckbox={toggle} destination={destination} />
+        <Body
+          entry={entry}
+          title={title}
+          destination={destination}
+          onStatus={statusFor(entry.path, title?.text ?? entry.title)}
+          deleted={Boolean(deleted)}
+          onReload={reload}
+          reader={
+            <Markdown
+              entry={title?.hoisted ?? entry}
+              onToggleCheckbox={entry.editable ? toggle : undefined}
+              destination={destination}
+            />
+          }
+        />
         <Connections entry={entry} destination={destination} />
       </article>
       {!inCard && sections.length >= 2 && <HeadingMap sections={sections} />}
@@ -303,6 +350,7 @@ function Toolbar({
   onQueue,
   width,
   onWidth,
+  save,
 }: {
   entry: Entry;
   queued: boolean;
@@ -310,18 +358,299 @@ function Toolbar({
   /** Absent when wide would change nothing, and so is not offered. */
   width?: Width;
   onWidth: (width: Width) => void;
+  /** The editor's save status, once it holds this page. */
+  save: { state: SaveState; act: () => void } | null;
 }) {
   return (
-    <div className="mb-3.5 flex flex-wrap items-center gap-2">
+    <div data-chrome="" className="mb-3.5 flex flex-wrap items-center gap-2">
       <GroupChip path={entry.path} />
       <span className="text-faint min-w-0 truncate font-mono text-xs">{entry.path}</span>
       <div className="flex-1" />
+      {!entry.editable && <ReadOnly />}
+      {save && <SaveStatus save={save} />}
+      <NotCommitted path={entry.path} />
       <div data-print="hide" className="flex gap-0.5">
         {width && <WidthToggle width={width} onChange={onWidth} />}
+        {downloadable(entry) && <Download path={entry.path} />}
         <QueueButton queued={queued} onQueue={onQueue} />
         <Print />
       </div>
     </div>
+  );
+}
+
+/**
+ * The page's body: the reader, and once the editor's chunk is here, the editor
+ * in its place. The editor mounts hidden and is swapped in when it holds the
+ * page, in one commit, so a large page never shows blank and nothing moves.
+ * If the chunk can't be loaded, the reader stays, ticking still works, and a
+ * toast says editing is off.
+ */
+function Body({
+  entry,
+  title,
+  destination,
+  reader,
+  onStatus,
+  onReload,
+  deleted,
+}: {
+  entry: Entry;
+  title: ReturnType<typeof pageTitle>;
+  destination: (bundlePath: string) => string;
+  reader: ReactNode;
+  onStatus: (state: SaveState, act: () => void) => void;
+  /** Reads the page again, after kept text was put back. */
+  onReload: () => Promise<Entry>;
+  /** The page was deleted outside while on screen. */
+  deleted: boolean;
+}) {
+  const toast = useToast();
+  const unavailable = useCallback(() => toast("Editing is unavailable: reload the page to try again.", "danger"), [toast]);
+  const module = useEditorModule(entry.editable, unavailable);
+  const [mounted, setMounted] = useState<string | null>(null);
+  // A new editor after kept text is put back, on the page as it then is.
+  const [epoch, setEpoch] = useState(0);
+  const { bundle } = useBundle();
+  const [kept, setKept] = useState(() => keptAll(bundle.id, entry.path));
+  // The kept copies part of which met changes made outside, by session.
+  const [partly, setPartly] = useState<string[]>([]);
+  // A click in the reader, and the keys typed after it, before the editor is
+  // in: held, and replayed in it once it is on screen.
+  const editorRef = useRef<{ replay: (early: Early) => void } | null>(null);
+  const early = useEarly(entry.editable && editorPrefetch.enabled && mounted !== entry.path + ":" + epoch);
+  useLayoutEffect(() => {
+    if (mounted !== entry.path + ":" + epoch || !editorRef.current) return;
+    editorRef.current.replay(early.take());
+  }, [mounted, entry.path, epoch, early]);
+  useEffect(() => setKept(keptAll(bundle.id, entry.path)), [bundle.id, entry.path]);
+
+  const bar =
+    entry.editable &&
+    kept.map((k) => (
+      <KeptBar
+        key={k.session}
+        kept={k}
+        partly={partly.includes(k.session)}
+        onPut={async () => {
+          try {
+            // Through the normal save, so it meets changes made since as any
+            // save does. What the page doesn't hold afterwards met one: it
+            // stays kept, here, and is never lost (Audy's L-2).
+            await api.saveBlocks(entry.path, k.base, k.baseBlocks, k.ops);
+            const fresh = await onReload();
+            const left = notIn(k.ops, fresh.blocks);
+            if (left.length) {
+              putKept({ ...k, ops: left }, entry.path);
+              setPartly((p) => [...p, k.session]);
+            } else dropKept(bundle.id, entry.path, k.session);
+            setKept(keptAll(bundle.id, entry.path));
+            setEpoch((e) => e + 1);
+          } catch (err) {
+            toast("Not saved: " + String((err as Error).message), "danger");
+          }
+        }}
+        onDrop={() => {
+          dropKept(bundle.id, entry.path, k.session);
+          setKept(keptAll(bundle.id, entry.path));
+        }}
+      />
+    ));
+  const ready = Boolean(module) && mounted === entry.path + ":" + epoch;
+  return (
+    <>
+      {bar}
+      {!ready && <div onPointerDown={early.down}>{reader}</div>}
+      {module && <div hidden={!ready}>
+        <module.Editor
+          key={entry.path + ":" + epoch}
+          entry={entry}
+          from={title?.hoisted ? 1 : 0}
+          title={title?.text ?? entry.title}
+          destination={destination}
+          onReady={(editor) => {
+            editorRef.current = editor;
+            setMounted(entry.path + ":" + epoch);
+          }}
+          onStatus={onStatus}
+          bundle={bundle.id}
+          deleted={deleted}
+        />
+      </div>}
+    </>
+  );
+}
+
+/**
+ * Holds early input while `holding`: a click in the reader's text records its
+ * point (a click on a link, a box, an anchor or an image keeps its reader
+ * behaviour and isn't held), and typing keys after it are held, in order, with
+ * their default prevented. `take` hands them over and starts afresh.
+ */
+function useEarly(holding: boolean) {
+  const held = useRef<Early>({ point: null, keys: [] });
+  useEffect(() => {
+    if (!holding) return;
+    const key = (e: KeyboardEvent) => {
+      if (!held.current.point || !typing(e)) return;
+      e.preventDefault();
+      held.current.keys.push(e.key);
+    };
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
+  }, [holding]);
+  return useMemo(
+    () => ({
+      down: (e: React.PointerEvent) => {
+        if (!holding || e.button !== 0) return;
+        if ((e.target as Element).closest("a, input, img, button, [data-remote-image]")) return;
+        held.current = { point: { x: e.clientX, y: e.clientY }, keys: [] };
+      },
+      take: () => {
+        const out = held.current;
+        held.current = { point: null, keys: [] };
+        return out;
+      },
+    }),
+    [holding],
+  );
+}
+
+/**
+ * The kept operations the page doesn't hold: a replace or insert whose text
+ * isn't one of its blocks, a delete whose block is still there.
+ */
+function notIn(ops: Op[], blocks: Entry["blocks"]): Op[] {
+  const texts = new Set(blocks.map((b) => b.text));
+  const hashes = new Set(blocks.map((b) => b.hash));
+  return ops.filter((op) => (op.op === "delete" ? hashes.has(op.hash) : "text" in op && op.text !== undefined && !texts.has(op.text)));
+}
+
+/**
+ * Text a reload left unsaved, offered back above the body (the design's §2),
+ * shown as it was typed, so the user sees what goes in before it does.
+ */
+function KeptBar({ kept, partly, onPut, onDrop }: { kept: Kept; partly: boolean; onPut: () => void; onDrop: () => void }) {
+  const text = kept.ops
+    .map((op) => ("text" in op && op.text !== undefined ? op.text : op.op === "delete" ? "(a block deleted)" : ""))
+    .filter(Boolean)
+    .join("\n\n");
+  return (
+    <div role="status" data-print="hide" className="bg-panel-2 text-fg mb-5 rounded-lg px-3 py-2 text-[13px]">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span aria-hidden className="bg-warn size-[7px] shrink-0 rounded-full" />
+        <span className="flex-1">
+          {partly
+            ? "Part of your text met changes made outside WikiShell, and wasn't put back. It's kept here."
+            : `You have text on this page that was not saved (${age(new Date(kept.at).toISOString())}).`}
+        </span>
+        {!partly && (
+          <button type="button" onClick={onPut} className="text-accent-ink font-medium hover:underline">
+            Put it back
+          </button>
+        )}
+        <button type="button" onClick={onDrop} className="text-muted font-medium hover:underline">
+          Throw it away
+        </button>
+      </div>
+      <pre className="text-muted mt-2 max-h-40 overflow-auto font-mono text-[12px] whitespace-pre-wrap">{text}</pre>
+    </div>
+  );
+}
+
+/**
+ * The save status, left of the toolbar's buttons: as little as it can say
+ * (the design's §2). Nothing at rest; "Saving…" only past a second; "Saved"
+ * for two seconds; "Not saved" until a save lands, with why on hover.
+ */
+function SaveStatus({ save }: { save: { state: SaveState; act: () => void } }) {
+  const { state, act } = save;
+  const [, tick] = useState(0);
+  const reason = useId();
+  // Wakes once when "Saving…" should appear or "Saved" go.
+  useEffect(() => {
+    const wait = state.kind === "saving" ? 1000 : state.kind === "saved" ? 2000 : null;
+    if (wait === null) return;
+    const t = setTimeout(() => tick((n) => n + 1), wait);
+    return () => clearTimeout(t);
+  }, [state]);
+  const now = Date.now();
+  let shown: ReactNode = null;
+  // What a screen reader hears: a failure and what to check, never each save.
+  let said = "";
+  if (state.kind === "saving" && now - state.since >= 1000) shown = <span className="text-faint">Saving…</span>;
+  else if (state.kind === "saved" && now - state.at < 2000) shown = <span className="text-faint">Saved</span>;
+  else if (state.kind === "failed") {
+    said = state.reason;
+    shown = (
+      <span className="group relative flex items-center gap-1.5">
+        <span aria-hidden className="bg-danger size-[7px] shrink-0 rounded-full" />
+        <span className="text-danger">Not saved</span>
+        <button
+          type="button"
+          onClick={act}
+          aria-describedby={reason}
+          className="text-accent-ink font-medium hover:underline"
+        >
+          Try again
+        </button>
+        {/* Why, on hover and on focus alike. */}
+        <span
+          id={reason}
+          role="tooltip"
+          className="bg-elev shadow-float text-fg invisible absolute top-full right-0 z-80 mt-1.5 w-max max-w-[min(320px,80vw)] rounded-lg px-2.5 py-1.5 text-[12.5px] group-focus-within:visible group-hover:visible"
+        >
+          {state.reason}
+        </span>
+      </span>
+    );
+  } else if (state.kind === "conflicts") {
+    said = state.label;
+    shown = (
+      <button type="button" onClick={act} className="flex items-center gap-1.5 hover:underline">
+        <span aria-hidden className="bg-warn size-[7px] shrink-0 rounded-full" />
+        <span className="text-fg">{state.label}</span>
+      </button>
+    );
+  } else if (state.kind === "gone")
+    shown = (
+      <>
+        <span aria-hidden className="bg-warn size-[7px] shrink-0 rounded-full" />
+        <span className="text-fg">This page was deleted outside WikiShell.</span>
+      </>
+    );
+  return (
+    <span data-print="hide" className="flex items-center gap-1.5 text-[12.5px]">
+      {shown}
+      <span aria-live="polite" className="sr-only">
+        {said}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * Says the page can't be changed here, and why on hover: the one sign of it,
+ * since an editable page has no sign at all.
+ */
+export function ReadOnly() {
+  const { bundle } = useBundle();
+  const toast = useToast();
+  const why = bundle.editable
+    ? "This page is too long to edit here: it has over 20,000 blocks."
+    : "This wiki is read-only on this address: start WikiShell with --edit to change it.";
+  return (
+    <span
+      data-print="hide"
+      title={why}
+      tabIndex={0}
+      // A phone shows no tooltip: a tap says it.
+      onClick={() => toast(why)}
+      aria-label={"Read only. " + why}
+      className="bg-panel-2 text-muted rounded-md px-2 py-0.5 text-[12.5px] font-medium"
+    >
+      Read only
+    </span>
   );
 }
 
@@ -330,7 +659,7 @@ function Meta({ entry }: { entry: Entry }) {
   const out = linksOut(entry).length;
   const back = linkedFrom(entry).length;
   return (
-    <div className="text-faint mb-7 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px]">
+    <div data-chrome="" className="text-faint mb-7 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px]">
       {entry.updated && <span title={entry.updated}>Updated {age(entry.updated)}</span>}
       <span>{count(out, "link")} out</span>
       <span>{count(back, "backlink")}</span>
@@ -386,6 +715,8 @@ function Frontmatter({
 }) {
   const { bundle } = useBundle();
   const [open, setOpen] = useBundleState(bundle.id, "reader:properties", false);
+  // A folded property clicked: the grid opens with that value being edited.
+  const [start, setStart] = useState<string | null>(null);
   // Folded, pointing at the summary shows the whole grid floating over the
   // text — a glance that moves nothing, since opening in the flow would push
   // the entry down under a pointer on its way to it. A click pins it in place.
@@ -396,7 +727,7 @@ function Frontmatter({
   const fields = Object.entries(entry.frontmatter).filter(
     ([k]) => k !== "title" && k !== "okf_version" && !drawn.has(k),
   );
-  if (fields.length === 0 && properties.length === 0) return null;
+  if (fields.length === 0 && properties.length === 0 && !entry.editable) return null;
 
   // Values that name an entry, keyed the way they are written so a lookup
   // replaces any guessing about what looks like a path.
@@ -417,14 +748,11 @@ function Frontmatter({
       ))}
       {fields.map(([key, value]) => {
         const list = Array.isArray(value);
-        return (
-          <Fragment key={key}>
-            {/* The key is faint and never coloured: accent means "this is
-                interactive", and a key is not. */}
-            <dt className="text-faint truncate" title={key}>
-              {key}
-            </dt>
-            <dd className="text-fg flex min-w-0 flex-wrap items-center gap-1.5">
+        // A value naming an entry is a link to follow; it is changed with the
+        // link picker, not by clicking it.
+        const linked = values(value).some((v) => refs.has(key + "\u0000" + v));
+        const shown = (
+          <>
               {values(value).map((v, i) => {
                 const ref = refs.get(key + "\u0000" + v);
                 // Truncated with the whole value on hover, so nothing is lost,
@@ -472,10 +800,29 @@ function Frontmatter({
               {/* The key is there, so the grid says so, in the word the filter
                   uses for an empty value. */}
               {values(value).length === 0 && <span className="text-faint">(nothing)</span>}
+          </>
+        );
+        return (
+          <Fragment key={key}>
+            {/* The key is faint and never coloured: accent means "this is
+                interactive", and a key is not. */}
+            <dt className="text-faint truncate" title={key}>
+              {key}
+            </dt>
+            <dd className="group/field text-fg flex min-w-0 flex-wrap items-center gap-1.5">
+              {linked ? (
+                shown
+              ) : (
+                <FieldValue entry={entry} field={key} value={value} types={bundle.types} start={start === key}>
+                  {shown}
+                </FieldValue>
+              )}
+              <RemoveField entry={entry} field={key} value={value} />
             </dd>
           </Fragment>
         );
       })}
+      <AddField entry={entry} types={bundle.types} />
     </dl>
   );
   // The view's own rows lead the line, as they lead the grid: a card's status
@@ -497,9 +844,13 @@ function Frontmatter({
           title={open ? "Hide the properties" : "Keep the properties open"}
           // Kept open, a click folds it and it stays folded under the pointer,
           // rather than floating back up where the grid just was.
-          onClick={() => {
-            if (!open) return setOpen(true);
+          onClick={(e) => {
+            if (!open) {
+              setStart(entry.editable ? ((e.target as Element).closest("[data-field]")?.getAttribute("data-field") ?? null) : null);
+              return setOpen(true);
+            }
             setOpen(false);
+            setStart(null);
             glance.dismiss();
           }}
           className="flex w-full min-w-0 items-center gap-2 px-3 py-2.5 text-left text-[13px]"
@@ -559,7 +910,7 @@ function Summary({
         const vs = values(value);
         const named = vs.map((v) => refs.get(key + "\u0000" + v)).filter((r): r is Ref => r !== undefined);
         return (
-          <Fragment key={key}>
+          <span key={key} data-field={key} className="flex shrink-0 items-center gap-1.5">
             {i > 0 && <span className="text-line-2" aria-hidden>·</span>}
             {key === "tags" ? (
               vs.map((t) => (
@@ -579,7 +930,7 @@ function Summary({
                 {named.length === 1 ? named[0]!.label : vs.join(", ")}
               </span>
             )}
-          </Fragment>
+          </span>
         );
       })}
     </span>
@@ -841,6 +1192,80 @@ function MapList({
         >
           {h.text}
         </a>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Whether a page offers its table as a file: a dataset with exactly one table,
+ * as its blocks tell (a table's head block starts each table). A page too big
+ * to be split into blocks comes without them; then the server decides.
+ */
+function downloadable(entry: Entry): boolean {
+  if (entry.type !== "dataset") return false;
+  if (!entry.blocks.length) return entry.body.trim() !== "";
+  return entry.blocks.filter((b) => b.kind === "table-head").length === 1;
+}
+
+/**
+ * Download a dataset's table, as CSV or JSON: the same bytes as
+ * `wiki table --format csv|json`, for a spreadsheet or a script.
+ *
+ * Two words rather than two icons, since the choice is the format and an icon
+ * can't say which. They sit in the toolbar's own style, after a download
+ * glyph that labels the group. A button is busy until its file is handed
+ * over, so a second click doesn't save twice, and it keeps focus meanwhile.
+ */
+function Download({ path }: { path: string }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState<"csv" | "json" | null>(null);
+  // Read in the click itself: a second click can come before the re-render.
+  const inFlight = useRef(new Set<string>());
+  const save = async (format: "csv" | "json") => {
+    if (inFlight.current.has(format)) return; // its file is on the way
+    inFlight.current.add(format);
+    setBusy(format);
+    try {
+      // What is typed and not saved yet goes first: the file is the page as
+      // the user sees it.
+      await settleSaves(path);
+      const { blob, name } = await api.table(path, format);
+      saveFile(blob, name);
+    } catch (e) {
+      // The server's reason, or, when it never answered, the app's words
+      // rather than the browser's ("Failed to fetch").
+      toast(`Can't download: ${e instanceof ApiError ? e.message : "WikiShell didn't answer."}`, "danger");
+    } finally {
+      inFlight.current.delete(format);
+      setBusy(null);
+    }
+  };
+  return (
+    <div role="group" aria-label="Download this dataset" className="text-muted flex items-center">
+      {/* The group's label, not a button: set off from the buttons before it,
+          and against "CSV". */}
+      <span aria-hidden className="bg-line mr-1.5 h-4 w-px" />
+      <Glyph size={16}>
+        <path d="M12 3v12" />
+        <path d="m7 10 5 5 5-5" />
+        <path d="M5 21h14" />
+      </Glyph>
+      {(["csv", "json"] as const).map((format) => (
+        <button
+          key={format}
+          type="button"
+          aria-label={`Download ${format.toUpperCase()}`}
+          title={`Download ${format.toUpperCase()}`}
+          onClick={() => void save(format)}
+          // aria-disabled, not disabled: a disabled button would drop a
+          // keyboard user's focus to the page while the file downloads.
+          aria-disabled={busy === format}
+          aria-busy={busy === format}
+          className="hover:bg-fg/5 hover:text-fg h-8 rounded-lg px-2 font-mono text-xs font-medium aria-disabled:opacity-40"
+        >
+          {format.toUpperCase()}
+        </button>
       ))}
     </div>
   );

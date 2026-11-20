@@ -47,7 +47,7 @@ test("a read and a write carry the token in a header, cache nothing, and never i
     },
     async () => {
       await api.bundle();
-      await api.setCheckbox("/notes/a.md", 6, true, 3);
+      await api.saveBlocks("/notes/a.md", "v1", ["h1"], [{ op: "replace", at: 0, hash: "h1", text: "- [x] a" }]);
     },
   );
   expect(sent.map((s) => s.token)).toEqual(["a-token", "a-token"]);

@@ -79,7 +79,9 @@ func TestTheAPINeedsTheHeader(t *testing.T) {
 			{http.MethodPost, "/api/board", `{"id":"pwned","path":"/","name":"Pwned"}`},
 			{http.MethodPut, "/api/board/root", `{"name":"Pwned"}`},
 			{http.MethodPost, "/api/refresh", `{}`},
-			{http.MethodPut, "/api/checkbox/notes/a.md", `{"line":6,"done":true,"version":1}`},
+			{http.MethodPut, "/api/blocks/notes/a.md", `{"base":"","baseBlocks":[],"ops":[]}`},
+			{http.MethodPut, "/api/fields/notes/a.md", `{"set":{"type":"pwned"}}`},
+			{http.MethodPost, "/api/entries", `{"path":"/pwned.md","content":"x"}`},
 			{http.MethodPut, "/api/card/root/notes/a.md", `{"value":"done","version":1}`},
 			{http.MethodPost, "/api/git/fetch", `{}`},
 		} {
@@ -110,13 +112,14 @@ func TestTheAPINeedsTheHeader(t *testing.T) {
 // refusing everything.
 func TestTheHeaderOpensTheAPI(t *testing.T) {
 	for mode, srv := range bothModes(t) {
+		srv.AllowEdits() // a network bind takes writes with --edit; tested on its own
 		for _, tc := range []struct{ method, path, body string }{
 			{http.MethodGet, "/api/bundle", ""},
 			{http.MethodGet, "/api/tree", ""},
 			{http.MethodGet, "/api/entry/notes/a.md", ""},
 			{http.MethodGet, "/api/git", ""},
 			{http.MethodPost, "/api/refresh", "{}"},
-			{http.MethodPut, "/api/checkbox/notes/a.md", `{"line":10,"done":true,"version":1}`},
+			{http.MethodPut, "/api/blocks/notes/a.md", `{"base":"","baseBlocks":[],"ops":[]}`},
 		} {
 			var body io.Reader
 			if tc.body != "" {
@@ -268,7 +271,7 @@ func TestSecurityHeadersAreOnEveryResponse(t *testing.T) {
 		if got := rec.Header().Get("X-Frame-Options"); got != "DENY" {
 			t.Errorf("%s: X-Frame-Options=%q", tc.path, got)
 		}
-		if got := rec.Header().Get("Content-Security-Policy"); got != "frame-ancestors 'none'" {
+		if got := rec.Header().Get("Content-Security-Policy"); got != csp {
 			t.Errorf("%s: Content-Security-Policy=%q", tc.path, got)
 		}
 		if got := rec.Header().Get("Referrer-Policy"); got != "no-referrer" {

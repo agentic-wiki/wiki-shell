@@ -1,10 +1,11 @@
 import { useMemo } from "react";
-import { Link as RouterLink } from "react-router";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { remarkCallout } from "./callout";
 import type { Entry } from "@/api";
+import { Heading, Image, PageLink, Quote, RemoteImages, RemoteImagesContext, Table, TaskItem } from "@/markdown/blocks";
+import { imageSource, linkTarget } from "@/markdown/href";
 
 /** The source position react-markdown attaches to every node it renders. */
 type WithNode = { node?: { position?: { start?: { line?: number } } } };
@@ -34,7 +35,9 @@ export function Markdown({
   destination = (path) => "/wiki" + path,
 }: {
   entry: Entry;
-  onToggleCheckbox?: (line: number, done: boolean) => void;
+  /** Ticks or unticks the to-do item on that body line; absent when the page
+   *  can't be written. */
+  onToggleCheckbox?: (bodyLine: number, done: boolean) => void;
   /**
    * Where a link to a bundle path should go. The reader sends you to the entry;
    * a board sends you to the card when the target is one of its own, so
@@ -52,6 +55,8 @@ export function Markdown({
     // Keyed by body line, because that is the coordinate system the rendered
   // markdown is in. The file line rides along for writes.
   const headings = useMemo(() => new Map(entry.headings.map((h) => [h.bodyLine, h])), [entry.headings]);
+  // One per page view: Load all reaches this page's remote images only.
+  const images = useMemo(() => new RemoteImages(), [entry.path]);
   const checkboxes = useMemo(
     () => new Map(entry.checkboxes.map((c) => [c.bodyLine, c])),
     [entry.checkboxes],
@@ -59,135 +64,40 @@ export function Markdown({
 
   const heading = (level: number) =>
     function H({ children, ...props }: { children?: React.ReactNode }) {
-      const id = headings.get(lineOf(props) ?? -1)?.id;
-      const Tag = `h${level}` as "h1";
       return (
-        <Tag id={id || undefined} className="group scroll-mt-16">
+        <Heading level={level} id={headings.get(lineOf(props) ?? -1)?.id}>
           {children}
-          {id && (
-            <a
-              href={"#" + id}
-              aria-label="Link to this section"
-              className="text-muted hover:text-accent-ink ml-2 no-underline opacity-0 transition-opacity group-hover:opacity-100"
-            >
-              #
-            </a>
-          )}
-        </Tag>
+        </Heading>
       );
     };
 
   const components: Components = {
-    a({ href, children, node: _node, ...props }) {
-      const link = href ? links.get(href) : undefined;
-
-      // A link out of the bundle is not navigable here: WikiShell serves this
-      // bundle and nothing above it. Rendered as marked text rather than as an
-      // anchor, because an anchor with a relative href resolves against the
-      // current route and a click becomes a full page load into a 404.
-      if (link?.outside) {
-        return (
-          <span
-            className="text-muted underline decoration-dotted underline-offset-2"
-            title={`${href} is outside this bundle`}
-          >
-            {children}
-          </span>
-        );
-      }
-
-      // A file the bundle carries rather than an entry: a diagram, a contract,
-      // a spreadsheet. A new tab, because leaving the reader to look at a PDF
-      // and then having to navigate back is worse than having both. The address is
-      // used exactly as the server sent it: `/raw` needs no token, so nothing is
-      // appended, and the server's Host check is what guards it.
-      if (link?.asset) {
-        return (
-          <a
-            href={link.asset}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="text-accent-ink underline decoration-1 underline-offset-2"
-            title={`${link.to} — opens in a new tab`}
-          >
-            {children}
-          </a>
-        );
-      }
-
-      if (!link) {
-        // Not an internal bundle link: an external URL, a bare fragment, or one
-        // resolving outside the bundle. Left exactly as authored.
-        const external = href?.startsWith("http");
-        return (
-          <a
-            href={href}
-            {...(external ? { target: "_blank", rel: "noreferrer noopener" } : {})}
-            className="text-accent-ink underline decoration-1 underline-offset-2"
-            {...props}
-          >
-            {children}
-          </a>
-        );
-      }
+    a({ href, title, children }) {
       return (
-        <RouterLink
-          to={destination(link.to) + (link.anchor ? "#" + link.anchor : "")}
-          // Not an error: per the format a link may point at knowledge not yet
-          // written, so it stays a link and is shown differently.
-          title={link.exists ? undefined : "This entry does not exist yet"}
-          className={
-            link.exists
-              ? "text-accent-ink underline decoration-1 underline-offset-2"
-              : "text-muted underline decoration-dotted underline-offset-2"
-          }
-        >
+        <PageLink target={linkTarget(href, links)} destination={destination} title={title}>
           {children}
-        </RouterLink>
+        </PageLink>
       );
     },
 
-    // An image in the bundle is fetched over HTTP like any other image. The
-    // only thing needed here is the address, which arrives resolved in the same
-    // table as every other href; the browser does the rest. `/raw` needs no
-    // token, so nothing is appended to it.
-    img({ src, alt, ...props }) {
-      const asset = typeof src === "string" ? links.get(src)?.asset : undefined;
+    img({ src, alt, title }) {
       return (
-        <img
-          src={asset ?? (typeof src === "string" ? src : undefined)}
-          alt={alt ?? ""}
-          loading="lazy"
-          className="max-w-full rounded-md"
-          {...props}
-        />
+        <Image source={imageSource(typeof src === "string" ? src : undefined, links)} alt={alt ?? ""} title={title} />
       );
     },
 
-    // The scroller lives on a wrapper, not on the <table> — see `.markdown-table`
-    // in `index.css` for what `display: block` on a table costs.
-    table({ node: _node, className, children, ...rest }) {
-      return (
-        <div className="markdown-table">
-          <table className={className} {...rest}>
-            {children}
-          </table>
-        </div>
-      );
+    table({ children }) {
+      return <Table>{children}</Table>;
     },
 
     // A callout is a blockquote the author labelled; `remarkCallout` has already
-    // stripped the marker and left the type and label behind. The label is a
-    // real element rather than a `::before`, because "Warning" that a screen
-    // reader never hears is the half of a callout that carries the meaning.
+    // stripped the marker and left the type and label behind.
     blockquote({ node: _node, children, ...props }) {
       const callout = calloutOf(props);
-      if (!callout) return <blockquote {...props}>{children}</blockquote>;
       return (
-        <blockquote {...callout.rest}>
-          <p className="callout-label">{callout.label}</p>
+        <Quote callout={callout?.type} label={callout?.label}>
           {children}
-        </blockquote>
+        </Quote>
       );
     },
 
@@ -197,19 +107,13 @@ export function Markdown({
       const box = checkboxes.get(lineOf(props) ?? -1);
       if (!box) return <li>{children}</li>;
       return (
-        <li className="flex items-start gap-2">
-          <input
-            type="checkbox"
-            checked={box.done}
-            disabled={!onToggleCheckbox}
-            onChange={() => onToggleCheckbox?.(box.line, !box.done)}
-            aria-label={box.text}
-            className="accent-accent mt-1.5 size-3.5 shrink-0 cursor-pointer disabled:cursor-default"
-          />
-          <span className={box.done ? "text-muted line-through" : undefined}>
-            {stripRenderedCheckbox(children)}
-          </span>
-        </li>
+        <TaskItem
+          done={box.done}
+          label={box.text}
+          onToggle={onToggleCheckbox && (() => onToggleCheckbox(box.bodyLine, !box.done))}
+        >
+          {stripRenderedCheckbox(children)}
+        </TaskItem>
       );
     },
 
@@ -222,36 +126,44 @@ export function Markdown({
   };
 
   return (
-    <div className="markdown">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkCallout]}
-        // lowlight ships 37 curated common grammars, which is the subset worth
-        // having; passing more only adds to it. Anything unrecognized renders as
-        // plain code rather than failing, so an omission costs colour, not a
-        // page. Highlighting is ~173KB of the bundle: going below this set means
-        // constructing a lowlight instance directly, which is worth doing only
-        // if that number starts to matter.
-        rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
-        components={components}
-        // Raw HTML is deliberately not enabled. These files are written by agents
-        // and by anyone else with the folder, so passing their HTML through would
-        // make every entry author an author of the UI.
-      >
-        {entry.body}
-      </ReactMarkdown>
-    </div>
+    <RemoteImagesContext value={images}>
+      <div className="markdown">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm, remarkCallout]}
+          // lowlight ships 37 curated common grammars, which is the subset worth
+          // having; passing more only adds to it. Anything unrecognized renders as
+          // plain code rather than failing, so an omission costs colour, not a
+          // page. Highlighting is ~173KB of the bundle: going below this set means
+          // constructing a lowlight instance directly, which is worth doing only
+          // if that number starts to matter.
+          rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
+          components={components}
+          // Raw HTML is deliberately not enabled. These files are written by agents
+          // and by anyone else with the folder, so passing their HTML through would
+          // make every entry author an author of the UI.
+          //
+          // Addresses are left as written: `href.ts` is the one rule for what a
+          // link or an image may be, and react-markdown's own filter would turn
+          // an unsafe link into an empty one rather than into text.
+          urlTransform={(url) => url}
+        >
+          {entry.body}
+        </ReactMarkdown>
+      </div>
+    </RemoteImagesContext>
   );
 }
 
 /**
  * The two data attributes `remarkCallout` leaves on a blockquote, which arrive
- * as props react-markdown has no type for. `data-callout` stays on the element,
- * since that is what `index.css` colours by; the label is rendered instead, so
- * it is taken back off.
+ * as props react-markdown has no type for.
  */
-function calloutOf(props: object): { label: string; rest: object } | undefined {
-  const { "data-callout-label": label, ...rest } = props as { "data-callout-label"?: string };
-  return "data-callout" in props ? { label: label ?? "", rest } : undefined;
+function calloutOf(props: object): { type: string; label: string } | undefined {
+  const { "data-callout": type, "data-callout-label": label } = props as {
+    "data-callout"?: string;
+    "data-callout-label"?: string;
+  };
+  return type === undefined ? undefined : { type, label: label ?? "" };
 }
 
 /**

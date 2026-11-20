@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -68,19 +69,13 @@ func (s *Server) handleGitPull(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gitResult{Status: status})
 }
 
-func (s *Server) handleGitSync(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Message string `json:"message"`
-	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorBody{"malformed request: " + err.Error()})
-		return
-	}
-
+// handleGitPush pushes the branch to its upstream. Commits are made in the
+// changes view (POST /api/commit), from the files the user saw.
+func (s *Server) handleGitPush(w http.ResponseWriter, r *http.Request) {
 	s.acting.Lock()
 	defer s.acting.Unlock()
 
-	status, err := git.Sync(r.Context(), s.store.Dir, req.Message)
+	status, err := git.Push(r.Context(), s.store.Dir)
 	if err != nil {
 		writeJSON(w, http.StatusConflict, gitResult{Status: status, Error: err.Error()})
 		return
@@ -101,7 +96,11 @@ func (s *Server) handleGitBranch(w http.ResponseWriter, r *http.Request) {
 	defer s.acting.Unlock()
 
 	status, err := git.Branch(r.Context(), s.store.Dir, req.Name)
-	if err != nil {
+	switch {
+	case errors.Is(err, git.ErrBadBranch):
+		writeJSON(w, http.StatusUnprocessableEntity, gitResult{Status: status, Error: err.Error()})
+		return
+	case err != nil:
 		writeJSON(w, http.StatusConflict, gitResult{Status: status, Error: err.Error()})
 		return
 	}

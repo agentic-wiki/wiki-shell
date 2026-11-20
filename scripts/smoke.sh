@@ -92,23 +92,26 @@ check "the entry names where to fetch its image" '"asset":"/raw/notes/diagram.pn
 [[ "$(curl -s -o /dev/null -w '%{http_code}' "${BASE}/raw/wiki.toml")" == "404" ]] ||
     fail "an unlinked file was served"
 
-echo "--- a checkbox toggle writes the file ---"
-version=$(api "${BASE}/api/bundle" | grep -o '"version":[0-9]*' | cut -d: -f2)
-# Scoped to the checkboxes array: "line" also appears in links and headings, and
-# taking the first one in the document writes to whatever a heading sits on.
-line=$(api "${BASE}/api/entry/notes/a.md" |
-    grep -o '"checkboxes":\[[^]]*' | grep -o '"line":[0-9]*' | head -1 | cut -d: -f2)
-[[ -n "$line" ]] || fail "could not find the checkbox's line in the response"
-api -X PUT "${BASE}/api/checkbox/notes/a.md" \
-    -d "{\"line\":${line},\"done\":true,\"version\":${version}}" >/dev/null
+echo "--- ticking a checkbox is a block replace, written to the file ---"
+entry=$(api "${BASE}/api/entry/notes/a.md")
+page=$(printf '%s' "$entry" | grep -o '"version":"[0-9a-f]\{32\}"' | cut -d'"' -f4)
+[[ -n "$page" ]] || fail "the entry carries no page version"
+# The blocks in order, one per line, then the item's index and hash.
+blocks=$(printf '%s' "$entry" | grep -o '{"kind":"[a-z-]*","text":"[^"]*","hash":"[0-9a-f]\{32\}"}')
+at=$(printf '%s\n' "$blocks" | grep -n '"text":"- \[ \] first"' | cut -d: -f1)
+[[ -n "$at" ]] || fail "could not find the checkbox's block in the response"
+at=$((at - 1))
+hash=$(printf '%s\n' "$blocks" | sed -n "$((at + 1))p" | grep -o '"hash":"[0-9a-f]*"' | cut -d'"' -f4)
+base=$(printf '%s\n' "$blocks" | grep -o '"hash":"[0-9a-f]*"' | cut -d'"' -f4 | sed 's/.*/"&"/' | paste -sd, -)
+save="{\"base\":\"${page}\",\"baseBlocks\":[${base}],\"ops\":[{\"op\":\"replace\",\"at\":${at},\"hash\":\"${hash}\",\"text\":\"- [x] first\"}]}"
+api -X PUT "${BASE}/api/blocks/notes/a.md" -d "$save" >/dev/null
 grep -q -- '- \[x\] first' "$bundle/notes/a.md" || fail "the checkbox was not written"
 
-echo "--- a stale version is refused, and nothing changes ---"
-code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT "${BASE}/api/checkbox/notes/a.md" \
-    -H "X-Wikishell-Token: ${TOKEN}" \
-    -d "{\"line\":${line},\"done\":false,\"version\":${version}}")
-[[ "$code" == "409" ]] || fail "expected 409 for a stale version, got $code"
-grep -q -- '- \[x\] first' "$bundle/notes/a.md" || fail "a refused write changed the file"
+echo "--- a stale save of the same block is a conflict, and nothing changes ---"
+stale=$(printf '%s' "$save" | sed 's/- \[x\] first/- [ ] first/')
+answer=$(api -X PUT "${BASE}/api/blocks/notes/a.md" -d "$stale")
+printf '%s' "$answer" | grep -q '"case":"both-changed"' || fail "expected a both-changed conflict, got $answer"
+grep -q -- '- \[x\] first' "$bundle/notes/a.md" || fail "a conflicting save changed the file"
 
 echo "--- an edit on disk reaches the index without a request ---"
 printf -- '---\ntype: note\n---\nbrand new\n' >"$bundle/notes/b.md"
@@ -147,6 +150,12 @@ netraw="http://127.0.0.1:${NETPORT}/raw/notes/diagram.png"
 curl -sf -o /dev/null -c "$jar" -H "X-Wikishell-Token: ${NETTOKEN}" "http://127.0.0.1:${NETPORT}/api/bundle"
 [[ "$(curl -s -o /dev/null -w '%{http_code}' -b "$jar" "$netraw")" == "200" ]] ||
     fail "a network /raw was refused with the cookie"
+# Without --edit, the network bind is read-only: a save is refused, the file
+# unchanged, and the terminal said so.
+netsave=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "X-Wikishell-Token: ${NETTOKEN}" \
+    -d "$save" "http://127.0.0.1:${NETPORT}/api/blocks/notes/a.md")
+[[ "$netsave" == "403" ]] || fail "a save on a network bind without --edit got $netsave, want 403"
+grep -q "read-only on this address" "$netlog" || fail "the terminal didn't say the network bind is read-only"
 
 echo "--- traversal names nothing ---"
 curl -s -o /dev/null -w '%{http_code}\n' -H "X-Wikishell-Token: ${TOKEN}" \

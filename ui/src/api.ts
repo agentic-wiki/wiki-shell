@@ -23,6 +23,12 @@ export interface BundleInfo {
   /** Every tag in the bundle, first appearance first. A tag's colour is its
    *  position here (`colour.ts`), so the order is the contract. */
   tags: string[];
+  /** Whether this server takes writes: always on loopback, and on a network
+   *  address only when it was started with `--edit`. */
+  editable: boolean;
+  /** The types wiki.toml declares, in its order, for the editor's type field
+   *  to offer. Empty when types are free-form. */
+  types: string[];
 }
 
 /**
@@ -126,6 +132,65 @@ export interface Entry {
   /** When it last changed, RFC 3339, by the engine's rule (a `timestamp`,
    *  else the file's mtime). Absent when it has neither. */
   updated?: string;
+  /** The page version: a hash of the whole file. Every body write is made
+   *  against one, so the server can tell what changed meanwhile. */
+  version: string;
+  /** The body as blocks, in order (editor-adr.md, "The block model"). Empty for
+   *  a page too big to edit (over 20,000 blocks). */
+  blocks: Block[];
+  /** Whether this page takes writes: the bind allows them, and it isn't too big. */
+  editable: boolean;
+}
+
+/** A block of a page's body: a paragraph, a heading, a list item, a table row… */
+export interface Block {
+  kind: "paragraph" | "heading" | "code" | "rule" | "quote" | "html" | "item" | "table-head" | "row";
+  text: string;
+  /** The block's version: a hash of its text. */
+  hash: string;
+}
+
+/**
+ * A change to a page's blocks, anchored to a block of a known version by its
+ * index and hash. Sent with `text`; the server sends `blocks`, already split,
+ * and also reports moves.
+ */
+export type Op =
+  | { op: "replace"; at: number; hash: string; text?: string; blocks?: Block[] }
+  | { op: "insert"; after: number; hash: string; text?: string; blocks?: Block[] }
+  | { op: "delete"; at: number; hash: string }
+  | { op: "move"; at: number; hash: string; after: number };
+
+/** An operation the server didn't apply, because the disk changed that block too. */
+export interface Conflict {
+  /** The block's index in the base version. */
+  at: number;
+  case: "both-changed" | "deleted-outside" | "changed-outside";
+  /** The disk's blocks in its place: empty when they were deleted. */
+  theirs: Block[];
+  /** Other base blocks a join on disk took in. */
+  also?: number[];
+}
+
+/** What `PUT /api/blocks` answers: the operations from the base to the new
+ *  version, and what wasn't applied. */
+export interface Saved {
+  version: string;
+  ops: Op[];
+  conflicts: Conflict[];
+  /** No block of the base was left on disk, so nothing was applied. */
+  rewritten: boolean;
+}
+
+/** What changed since a version: operations, or the whole list when the
+ *  server no longer holds that version. */
+export type Since = { version: string; editable: boolean } & ({ ops: Op[] } | { blocks: Block[] });
+
+/** A frontmatter key changed on disk since it was read: its value there,
+ *  null when it is gone. */
+export interface FieldConflict {
+  key: string;
+  theirs: unknown;
 }
 
 export interface EntryStub {
@@ -458,14 +523,17 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-const put = <T,>(path: string, body: unknown) => write<T>("PUT", path, body);
+const put = <T,>(path: string, body: unknown, keepalive = false) => write<T>("PUT", path, body, keepalive);
 const post = <T,>(path: string, body: unknown) => write<T>("POST", path, body);
 
-async function write<T>(method: string, path: string, body: unknown): Promise<T> {
+/** `keepalive` lets the request finish after the page is gone: the browser
+ *  takes a body of 64 KiB at most. */
+async function write<T>(method: string, path: string, body: unknown, keepalive = false): Promise<T> {
   const res = await request(path, {
     method,
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
+    keepalive,
   });
   if (!res.ok) {
     const b = await res.json().catch(() => null);
@@ -488,23 +556,55 @@ export const api = {
     // path. Each segment is encoded so a name with a space or a '#' survives.
     get<Entry>("/api/entry/" + encode(path), signal),
 
+  /** What changed in a page's body since a version (editor-adr.md, "Reading"). */
+  blocks: (path: string, since: string, signal?: AbortSignal) =>
+    get<Since>("/api/blocks/" + encode(path) + "?since=" + encodeURIComponent(since), signal),
+
   /**
-   * Toggles a checkbox.
-   *
-   * The version travels with the write because the request is addressed by
-   * *line*, and a line only means something against the content it was read
-   * from. If the entry changed underneath, line 12 may be a different checkbox
-   * or none at all, so the server refuses and this refetches.
+   * A dataset's table as a file: the bytes `wiki table --format csv|json`
+   * prints, and the name the server gives it. Fetched rather than linked,
+   * because every /api request carries the token header and a link can't.
    */
-  setCheckbox: (path: string, line: number, done: boolean, version: number) =>
-    put<{ version: number }>("/api/checkbox/" + encode(path), { line, done, version }),
+  table: async (path: string, format: "csv" | "json") => {
+    const res = await request("/api/table/" + encode(path) + "?format=" + format);
+    if (!res.ok) {
+      const b = await res.json().catch(() => null);
+      throw new ApiError(res.status, b?.error ?? res.statusText, b);
+    }
+    // The page's own name (filename*, RFC 6266) before the ASCII fallback.
+    const disposition = res.headers.get("content-disposition") ?? "";
+    const real = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+    const name =
+      (real && decodeURIComponent(real)) || /filename="([^"]+)"/.exec(disposition)?.[1] || `dataset.${format}`;
+    return { blob: await res.blob(), name };
+  },
+
+  /**
+   * Writes block operations made against `base`, whose block hashes are
+   * `baseBlocks`. The server merges them with whatever reached the disk
+   * meanwhile, and answers what it couldn't apply as conflicts.
+   */
+  saveBlocks: (path: string, base: string, baseBlocks: string[], ops: Op[], keepalive = false) =>
+    put<Saved>("/api/blocks/" + encode(path), { base, baseBlocks, ops }, keepalive),
+
+  /**
+   * Sets and unsets frontmatter fields, each guarded by the value it had when
+   * read (`old`; absent means it had none). A key changed on disk meanwhile is
+   * not written, and comes back as a conflict.
+   */
+  setFields: (path: string, set: Record<string, unknown>, old: Record<string, unknown>, unset: string[] = []) =>
+    put<{ version: string; conflicts: FieldConflict[] }>("/api/fields/" + encode(path), { set, old, unset }),
+
+  /** Creates a page with its whole file; refused with 409 when one is there. */
+  createEntry: (path: string, content: string) => post<{ version: string }>("/api/entries", { path, content }),
 
   /**
    * Moves a card to another column.
    *
    * The column's value, not the field it is stored in: the board says which
    * frontmatter key its columns are made of, and it says so on the server where
-   * the config is parsed. Same version guard as a checkbox, refused the same way.
+   * the config is parsed. The bundle version travels with it: the server refuses
+   * the move when the bundle moved on since.
    */
   moveCard: (board: string, path: string, value: string, lane: string, version: number) =>
     put<{ version: number }>("/api/card/" + encodeURIComponent(board) + "/" + encode(path), {
@@ -549,9 +649,19 @@ export const api = {
   git: (signal?: AbortSignal) => get<GitResult>("/api/git", signal),
   gitFetch: () => post<GitResult>("/api/git/fetch", {}),
   gitPull: () => post<GitResult>("/api/git/pull", {}),
-  gitSync: (message: string) => post<GitResult>("/api/git/sync", { message }),
+  gitPush: () => post<GitResult>("/api/git/push", {}),
   gitBranch: (name: string) => post<GitResult>("/api/git/branch", { name }),
   refresh: () => post<{ version: number }>("/api/refresh", {}),
+
+  // The changes view (changes-view-adr.md): what isn't committed, one file's
+  // diff, and the two writes, each guarded by the version the user saw.
+  changes: (signal?: AbortSignal) => get<Changes>("/api/changes", signal),
+  change: (path: string, signal?: AbortSignal) => get<FileDiff>("/api/changes/" + encode(path), signal),
+  /** Undoes one hunk, or the whole file without `hunk`. */
+  discard: (path: string, version: string, hunk?: number) =>
+    post<{ version: string }>("/api/changes/discard", { path, version, hunk }),
+  commit: (message: string, files: { path: string; version: string }[], push: boolean) =>
+    post<Committed>("/api/commit", { message, files, push }),
 };
 
 /** How many reconnects in a row before giving up rather than retrying forever. */
@@ -788,4 +898,65 @@ export interface GitResult {
   /** The branch offered when a pull had to be abandoned, so the way out arrives
    *  with the problem. */
   proposed?: string;
+}
+
+/** Every uncommitted change in the bundle (`GET /api/changes`). */
+export interface Changes {
+  /** False when the bundle isn't in git. */
+  repo: boolean;
+  files: ChangedFile[];
+  /** Files staged outside the bundle, which a commit here never takes. */
+  outside: number;
+}
+
+/** One changed file, at the `version` it was read at. */
+export interface ChangedFile {
+  path: string;
+  /** The old path, for a rename. */
+  from?: string;
+  change: "new" | "modified" | "deleted" | "renamed";
+  /** The file's bytes now; "" for a deleted file and for a dot file. */
+  version: string;
+  /** `dot`: a name starting with a dot, never shown or committed here. */
+  kind: "page" | "text" | "binary" | "dot" | "link";
+  title?: string;
+  /** Blocks for a page, lines for text; absent when not counted. */
+  added?: number;
+  removed?: number;
+  /** Set for a file over 2 MiB, which is listed but not diffed. */
+  size?: number;
+  /** Only when the mode changed: git's `100644`, `100755`, `120000`. */
+  mode?: { from?: string; to: string };
+}
+
+/** One file's diff (`GET /api/changes/{path}`). */
+export interface FileDiff {
+  version: string;
+  /** git's unified diff; absent for a binary or large file. */
+  raw?: string;
+  /** A page's: HEAD's blocks, and the operations from them to now. */
+  blocks?: { ops: Op[]; head: Block[] };
+  /** A field's `from` or `to` is null when HEAD or now lacks it. */
+  fields?: { key: string; from: unknown; to: unknown }[];
+  /** A page's header bytes differ from HEAD's. With no `fields`, only its
+   *  layout changed: order, comments or quoting. */
+  header?: boolean;
+  /** What can be discarded; `hunk: n` in a discard is an index here. */
+  hunks: Hunk[];
+}
+
+export type Hunk =
+  | { kind: "field"; key: string }
+  | { kind: "blocks" | "move"; ops: number[] }
+  | { kind: "lines"; at: number };
+
+/** What `POST /api/commit` answers. */
+export interface Committed {
+  committed: string[];
+  refused: { path: string; reason: string }[];
+  commit: string;
+  pushed: boolean;
+  /** The push's error, when one was asked and failed; the commit stands. */
+  pushError?: string;
+  status: GitStatus;
 }

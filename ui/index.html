@@ -9,19 +9,8 @@
          <link> that Vite emits, so nothing else paints unstyled. -->
     <meta name="color-scheme" content="light dark" />
     <title>WikiShell</title>
-    <script>
-      // Applied before the first paint. Read after React mounts, the theme
-      // would flash the system default first, and the width would reflow the
-      // column underneath the text you were already reading.
-      try {
-        var t = localStorage.getItem("wiki:theme");
-        if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
-        if (localStorage.getItem("wiki:width") === "wide") document.documentElement.setAttribute("data-width", "wide");
-      } catch (e) {
-        // Storage can be unavailable (private mode, blocked cookies). The system
-        // theme is a fine answer; the toggle just will not persist.
-      }
-    </script>
+    <!-- The theme and width, before the first paint (see public/theme.js). -->
+    <script src="/theme.js"></script>
   </head>
   <body>
     <div id="root"></div>

@@ -16,58 +16,6 @@ import (
 	"github.com/agentic-wiki/wiki/parse"
 )
 
-// checkboxRequest toggles one checkbox.
-//
-// Version is the bundle version the client was looking at. It is not optimistic
-// locking for its own sake: the write is addressed by *line*, and a line number
-// only means something against the content it was read from. If the entry
-// changed underneath — an agent edited it, `tidy` moved things, someone saved in
-// an editor — line 12 may now be a different checkbox, or not a checkbox at all.
-// Refusing is the only safe answer, and the client refetches.
-type checkboxRequest struct {
-	Line    int    `json:"line"`
-	Done    bool   `json:"done"`
-	Version uint64 `json:"version"`
-}
-
-func (s *Server) handleCheckbox(w http.ResponseWriter, r *http.Request) {
-	var req checkboxRequest
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorBody{"malformed request: " + err.Error()})
-		return
-	}
-
-	// One read, so the version checked and the index written against are the
-	// same rebuild. Taken separately, a rebuild landing between them would let
-	// the guard pass on one version and the write land on another — which is
-	// exactly the staleness the guard exists to catch.
-	v := s.store.View()
-	if req.Version != v.Version {
-		writeJSON(w, http.StatusConflict, conflictBody{
-			Error:   "the entry changed since you read it",
-			Version: v.Version,
-		})
-		return
-	}
-
-	idx := v.Index
-	entryPath := "/" + strings.TrimPrefix(r.PathValue("path"), "/")
-	e, err := idx.Resolve(entryPath)
-	if err != nil {
-		writeJSON(w, http.StatusNotFound, errorBody{err.Error()})
-		return
-	}
-
-	// The engine owns the edit: exactly one character changes, the write is
-	// atomic, and the entry re-parses itself afterwards. Nothing here knows what
-	// a checkbox looks like on disk.
-	if err := e.SetCheckbox(req.Line, req.Done); err != nil {
-		writeJSON(w, http.StatusUnprocessableEntity, errorBody{err.Error()})
-		return
-	}
-	s.committed(w)
-}
-
 // cardRequest moves one card, by column and by lane.
 //
 // Values rather than field names: which frontmatter keys a column and a lane
@@ -93,8 +41,9 @@ func (s *Server) handleCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// One read, for the same reason as a checkbox: the version checked and the
-	// index written against have to be the same rebuild.
+	// One read, so the version checked and the index written against are the
+	// same rebuild: taken separately, a rebuild between them would let the
+	// guard pass on one version and the write land on another.
 	v := s.store.View()
 	if req.Version != v.Version {
 		writeJSON(w, http.StatusConflict, conflictBody{
@@ -147,7 +96,12 @@ func (s *Server) handleCard(w http.ResponseWriter, r *http.Request) {
 	// A refusal (a header the library can't edit safely) is the request's
 	// problem, so 422 with the reason. Anything else, such as a file that
 	// can't be read or written, is the server's.
-	if err := e.SetFields(fields); err != nil {
+	// Under the page-write lock: a card move and a block or field save of the
+	// same page each read and write the whole file.
+	s.editing.Lock()
+	err = e.SetFields(fields)
+	s.editing.Unlock()
+	if err != nil {
 		code := http.StatusInternalServerError
 		var refused *parse.EditError
 		if errors.As(err, &refused) {

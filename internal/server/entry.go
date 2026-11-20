@@ -10,7 +10,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/agentic-wiki/wiki-shell/internal/git"
 	"github.com/agentic-wiki/wiki/index"
+	"github.com/agentic-wiki/wiki/parse"
 )
 
 // EntryView is one entry as the reader needs it.
@@ -59,6 +61,13 @@ type EntryView struct {
 	// Updated is when the entry last changed, by the engine's rule: its
 	// frontmatter `timestamp`, else the file's modification time. See updated().
 	Updated string `json:"updated,omitempty"`
+	// Version is the page's version (the file's, 128 bits), and Blocks its
+	// body's blocks: what an edit is anchored to (PUT /api/blocks). Editable
+	// is false on a read-only network bind, and for a page over the block cap,
+	// which opens read-only and whose blocks aren't sent.
+	Version  string        `json:"version"`
+	Blocks   []parse.Block `json:"blocks"`
+	Editable bool          `json:"editable"`
 }
 
 // LinkView is one outgoing internal link. Raw is the lookup key: it is the href
@@ -162,25 +171,23 @@ func (s *Server) handleEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The rule /raw follows: no dot path, and no symlink to one or out of the bundle.
-	if _, ok := realFile(idx.Bundle.Dir, e.Path); hidden(e.Path) || !ok {
+	if _, ok := realFile(idx.Bundle.Dir, e.Path); git.IsDot(e.Path) || !ok {
 		writeJSON(w, http.StatusNotFound, errorBody{"not found"})
 		return
 	}
 
-	body, err := e.Body()
+	// One read of the file: the body, the version and the blocks all come from
+	// the same bytes, so an edit is never anchored to a version it didn't see.
+	p, err := s.readPage(e)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, errorBody{err.Error()})
 		return
 	}
+	raw, body := p.raw, parse.Body(p.raw)
 
 	// How many lines the frontmatter took, so file positions can be expressed in
 	// body coordinates too. Derived from what was actually stripped rather than
-	// by re-parsing the fence, so it cannot disagree with Body().
-	raw, err := e.Raw()
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorBody{err.Error()})
-		return
-	}
+	// by re-parsing the fence, so it cannot disagree with the body.
 	offset := strings.Count(raw[:len(raw)-len(body)], "\n")
 
 	title := nameOf(e)
@@ -198,6 +205,9 @@ func (s *Server) handleEntry(w http.ResponseWriter, r *http.Request) {
 		Headings:         headings(e, offset),
 		Checkboxes:       checkboxes(e, offset),
 		Updated:          updated(e),
+		Version:          p.version,
+		Blocks:           nonNilBlocks(p.blocks),
+		Editable:         p.editable,
 	}
 	writeJSON(w, http.StatusOK, view)
 }
@@ -212,7 +222,7 @@ func outgoing(idx *index.Index, e *index.Entry) []LinkView {
 		// Not an entry and not named like one, so it is a file the bundle
 		// carries. A missing `.md` deliberately gets nothing: that is knowledge
 		// not yet written, not a file to fetch.
-		if err != nil && !strings.HasSuffix(l.Target, ".md") && !hidden(l.Target) {
+		if err != nil && !strings.HasSuffix(l.Target, ".md") && !git.IsDot(l.Target) {
 			asset = "/raw" + (&url.URL{Path: l.Target}).EscapedPath() // never an Outside link
 		}
 		out = append(out, LinkView{

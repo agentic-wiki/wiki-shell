@@ -9,7 +9,7 @@ import { DocumentTitle } from "@/shell/DocumentTitle";
 import { ScrollRestoration } from "@/shell/ScrollRestoration";
 import { ThemeToggle, themeLabel, useTheme } from "@/shell/Theme";
 import { useBundleState } from "@/state";
-import { GitActions, useGitStatus, type GitTab } from "@/shell/GitActions";
+import { GitActions, GitContext, useGitStatus, type GitTab } from "@/shell/GitActions";
 import { NewView } from "@/views/NewView";
 import { frontDoor } from "@/tree";
 import { SectionLabel } from "@/ui/SectionLabel";
@@ -214,12 +214,16 @@ export function Shell({
             run: () => setGitTab("incoming"),
           },
           {
-            title: "Commit & push…",
-            sub: `git · ${count(git.changes.length, "file")} changed`,
+            title: git.ahead > 0 ? `Push ${count(git.ahead, "commit")}` : "Push",
+            sub: `git · ${git.branch || "detached"} → ${git.remote}`,
             kind: "Git",
             run: () => setGitTab("changes"),
           },
         ]
+      : []),
+    // Committing needs no upstream: only a repository.
+    ...(git?.repo
+      ? [{ title: "Review changes", sub: `${count(git.changes.length, "file")} changed`, kind: "Git", run: () => navigate("/changes") }]
       : []),
     {
       title: "Toggle theme",
@@ -398,7 +402,7 @@ export function Shell({
 
         <main ref={viewRef} className="min-w-0 grow overflow-y-auto">
           <ScrollRestoration containerRef={viewRef} />
-          {children}
+          <GitContext value={[git, setGit]}>{children}</GitContext>
         </main>
       </div>
 
@@ -617,6 +621,7 @@ function trail(
     const name = views?.find((v) => v.id === id)?.name ?? id;
     return [{ label: section === "boards" ? "Boards" : "Graphs", onClick: () => openPanel(section) }, { label: name }];
   };
+  if (pathname.startsWith("/changes")) return [{ label: "Changes" }];
   switch (sectionFor(pathname)) {
     case "boards":
       return view("boards", "/kanban", bundle.boards);

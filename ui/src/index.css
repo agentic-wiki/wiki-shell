@@ -307,6 +307,115 @@ body {
 
 .markdown hr { border: 0; border-top: 1px solid var(--color-line); margin: 2rem 0; }
 .markdown img { max-width: 100%; height: auto; border-radius: 0.5rem; }
+/* The editor (src/edit): the reader's content, editable. Only what editing
+   needs on top of the reader's rules, and nothing that moves a pixel at rest. */
+/* ProseMirror needs pre-wrap to show the spaces being typed, but pre-wrap
+   shows spaces the reader drops (after an image, at the end of a link's
+   line). So pre-wrap only in the block being typed in; everywhere else, and
+   at rest, the reader's own white-space. */
+.ProseMirror { outline: none; overflow-wrap: break-word; caret-color: var(--color-fg); }
+.ProseMirror.ProseMirror-focused [data-caret] { white-space: pre-wrap; }
+/* What the editor draws but doesn't edit (a source block's rendering, the
+   image chip) keeps the reader's white-space, focused or not. */
+.ProseMirror [contenteditable="false"] { white-space: normal; }
+.ProseMirror-hideselection *::selection { background: transparent; }
+/* ProseMirror puts an empty image beside an inline node so the caret can
+   reach it. Tailwind's base makes images blocks; as a block it is 0px tall,
+   which is right but before the <br> that ends a line after an inline node,
+   where it would add a line. */
+.ProseMirror img.ProseMirror-separator:has(+ br.ProseMirror-trailingBreak) {
+  display: inline !important;
+  border: none !important;
+  margin: 0 !important;
+}
+/* A tight list item's text, and a table cell's, are in a <p> the reader
+   doesn't draw: laid out as the reader's bare text. */
+.markdown li[data-spread="false"] > p,
+.markdown li[data-spread="false"] > span > p,
+.markdown td > p,
+.markdown th > p { text-wrap: wrap; }
+/* Changed outside WikiShell (the design's §3): a wash that fades, and a 2px
+   accent bar in the margin for a minute. Held for the user to choose: a warn
+   bar. A block deleted outside: an accent mark where it was. All in the
+   margin, out of the text's flow. */
+.ProseMirror [data-outside], .ProseMirror [data-held] { position: relative; }
+.ProseMirror [data-outside-bar], .ProseMirror [data-held]::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--color-accent);
+}
+.ProseMirror [data-outside-bar] { display: block; }
+.ProseMirror [data-held]::before { background: var(--color-warn); }
+.ProseMirror [data-outside] { animation: wv-wash 1.5s ease-out; }
+@keyframes wv-wash { from { background: var(--color-accent-bg); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .ProseMirror [data-outside] { animation: none; } }
+.ProseMirror [data-removed] { position: relative; display: block; height: 0; margin: 0 !important; }
+.ProseMirror [data-removed] > span {
+  position: absolute;
+  left: -10px;
+  top: -0.85em;
+  width: 2px;
+  height: 1.7em;
+  border-radius: 1px;
+  background: var(--color-accent);
+}
+/* A table's controls: above it, out of its flow, on hover or with the caret in it. */
+/* Positioned only while its controls show: at rest, a positioned box around a
+   scrolling table changes how its text is drawn. */
+.ProseMirror [data-table]:hover, .ProseMirror [data-table][data-caret-in], .ProseMirror [data-table]:focus-within { position: relative; }
+.ProseMirror [data-table-controls] {
+  position: absolute;
+  right: 0;
+  /* In the 16 px margin above the table: 15 px tall, so it never covers the
+     line before it. */
+  bottom: 100%;
+  margin-bottom: 1px;
+  gap: 2px;
+  padding: 0 2px;
+  border-radius: 6px;
+  background: var(--color-elev);
+  box-shadow: var(--shadow-float);
+  font-size: 11px;
+  line-height: 15px;
+  white-space: nowrap;
+  /* Not drawn at all at rest: even an invisible layer here changes how the
+     table's text is anti-aliased. */
+  display: none;
+}
+.ProseMirror [data-table-controls] button { padding: 0 6px; border-radius: 5px; color: var(--color-muted); }
+.ProseMirror [data-table-controls] button:hover { background: color-mix(in oklch, var(--color-fg) 6%, transparent); color: var(--color-fg); }
+.ProseMirror [data-table]:hover > [data-table-controls],
+.ProseMirror [data-table][data-caret-in] > [data-table-controls],
+.ProseMirror [data-table-controls]:focus-within { display: flex; }
+
+/* A done to-do in the editor: its own text struck, as the reader's DONE class
+   does, but not its nested list. */
+.markdown [data-done] > :not(ul, ol) { color: var(--color-muted); text-decoration: line-through; }
+/* A source block: the reader's rendering at rest, its Markdown with the caret
+   in it. */
+[data-source]:not([data-editing]) > :not([data-source-shown]) { display: none; }
+[data-source][data-editing] > [data-source-shown] { display: none; }
+/* Raw HTML renders as bare text in the reader, with no element to take a
+   block's top margin: neither does its source block. */
+.markdown > [data-source]:not(:has(> [data-source-shown] > .markdown > *)) { margin-top: 0; }
+[data-source-text] {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.6rem;
+  background: var(--color-panel-2);
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+/* Shown on paper only (see the print rules). */
+[data-print="only"] { display: none; }
 
 /* Width, a preference.
  *
@@ -408,6 +517,8 @@ body {
 
   /* Controls. They exist to reach somewhere else, and paper goes nowhere. */
   [data-print="hide"] { display: none !important; }
+  /* What paper says in their place: an unloaded image as words. */
+  [data-print="only"] { display: inline !important; }
 
   /* Nothing that reads as one thing is split down the middle. */
   pre, blockquote, tr, img, table { break-inside: avoid; }

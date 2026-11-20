@@ -246,6 +246,22 @@ func TestBundleTagsAreAListWhenThereAreNone(t *testing.T) {
 	}
 }
 
+// The types wiki.toml declares come in its order, for the editor's type
+// field to offer; free-form types are an empty list, never null.
+func TestBundleTypes(t *testing.T) {
+	for toml, want := range map[string]string{
+		"spec = \"0.1\"\ntypes = [\"task\", \"note\"]\n": `"types":["task","note"]`,
+		"spec = \"0.1\"\n": `"types":[]`,
+	} {
+		srv, _ := bundleServer(t, map[string]string{"wiki.toml": toml, "index.md": "---\nokf_version: \"0.1\"\n---\nhome\n"})
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, browserRequest(srv, http.MethodGet, "/api/bundle", nil))
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Errorf("body %s: want %s", rec.Body, want)
+		}
+	}
+}
+
 // A list of views says how big each one is, counted the way the view itself
 // counts: a board by the entries its filter admits, a graph by the entries it
 // is over, before any neighbours join them.

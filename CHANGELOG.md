@@ -2,7 +2,38 @@
 
 All notable changes to WikiShell are documented here. This project follows [semantic versioning](https://semver.org); while pre-1.0, breaking changes bump the minor version.
 
-## Unreleased
+## v0.20.0
+
+Editing pages in place, and the changes view to review and commit what changed: the server (the editor ADR's and the changes-view ADR's slice 2) and the app (slice 3). Needs `wiki` v0.23.1.
+
+### Breaking
+
+- **A network address is read-only unless WikiShell starts with `--edit`.** Without it, every change through `/api` (pages, fields, boards, cards, git actions) is refused with `403` "This wiki is read-only on this address: start WikiShell with --edit to change it.", checked before routing, and `/api/bundle` says `editable: false`. `POST /api/refresh` still works. With `--edit`, the terminal says that anyone with the link can edit pages, commit and push as you. On localhost nothing changes: editing is always on.
+- **`PUT /api/checkbox` is gone.** Ticking a checkbox is a `replace` of its item through `PUT /api/blocks`, anchored by content, so it merges with an agent's edit where a line number went stale.
+- **A Content-Security-Policy on every response:** the app's own scripts, styles and connections only, no embedding, no forms elsewhere, and images from here or any `https:` site. The theme script moved from inline to `/theme.js` to run under it.
+- **`POST /api/git/sync` is now `POST /api/git/push`**, and it only pushes. Commits are made from the changes view, through `POST /api/commit`.
+- **The rescue push (`POST /api/git/branch`) checks its name with git's own rule** too, and passes it after `--`. A refused name is `422`, no longer `409`.
+
+### Added
+
+- **`types` on `GET /api/bundle`**: the types `wiki.toml` declares, in its order, for the editor's type field to offer; an empty list when types are free-form.
+- **`version`, `blocks` and `editable` on `GET /api/entry`**: the page's version (128 bits) and its body's blocks, from one read, and whether it can be edited. A page over 20,000 blocks opens read-only: its blocks aren't sent, kept or diffed.
+- **`GET /api/blocks/{path}?since=`**: what changed since a version, as replace, insert, delete and move operations, or the whole block list for a version no longer kept. The last 8 block lists of each page are kept, over the 64 pages most recently served.
+- **`PUT /api/blocks/{path}`**: save a page's changed blocks, merged three ways with what changed on disk (`wiki`'s `ApplyBlocks`). A block both sides changed comes back as a conflict with the disk's text; an invalid save is refused with `422`. Saves of one page never overlap, card moves included; a save that landed answers with its result even if the index rebuild after it fails.
+- **`PUT /api/fields/{path}`**: set and unset frontmatter fields, each written only if it still holds the value read; a key changed on disk comes back with its value there. A `type` that `wiki.toml`'s declared `types` don't hold, or a key wiki can't write, is refused with `422` and the reason.
+- **`POST /api/entries`**: create a page, `201`, or `409` where a file already is, `422` for a path `wiki` refuses.
+- **`GET /api/changes`**: every uncommitted change in the bundle (new, modified, deleted, renamed), with its version and kind (`page`, `text`, `binary`, `dot`, `link`), the blocks or lines added and removed, and `mode` when its git mode changed (an execute bit, or a file that became a symlink or stopped being one). Read through a shadow index and object folder in the user's cache folder (0700, deleted on stop, or at the next start after a crash), so the repository's index and objects are never written. Dot paths are listed by name only, and not at all on a network address. Files over 2 MiB carry their `size` instead of a diff, and are streamed, never held whole. A file with a `filter` attribute (git-lfs) has no diff either, so its clean filter never runs on a listing.
+- **`GET /api/changes/{path}`**: one file's diff. A page's is by block (HEAD's blocks and the operations to now) and by field, with `header: true` when its header's bytes changed even where no field's value did; any other file's is git's line diff. `hunks` lists what can be discarded, numbered by the server. A dot path is `403`.
+- **`POST /api/changes/discard`**: put a whole file, or one hunk, back as HEAD has it, guarded by the version shown (`409` if it moved). A page's hunk (any `.md` file) is worked out from the bytes shown and written only if the file still has them, all or nothing; a text hunk through `git apply --reverse`. A new file is deleted, a symlink itself and never its target.
+- **`POST /api/commit`**: commit the files shown, each at its shown version, from the bytes checked, never from the worktree at commit time. A file that changed since is refused and the rest is committed. The user's other staged files stay staged. `pre-commit` and `commit-msg` run (git 2.36 or later), signing follows `commit.gpgsign`, a branch that moved meanwhile is `409` with nothing committed, and a commit with nothing to commit is `422`. Each file's mode is the one `git add` would give it. With `push`, it pushes after, and a failed push comes back as `pushError` with the commit kept.
+
+- **Edit a page where you read it**, as in Notion: click and type, `/` for blocks, `@` to link a page, Markdown shortcuts, a toolbar on a selection, tables that grow by their controls or by Tab, and a handle on each block to turn it into another kind, duplicate, move or delete it (or drag it). Each change is saved to the file block by block, so every byte you didn't touch stays as it was. Fields are edited in place too: a list one item a line, a switch for true or false, a date picker, and a select of `wiki.toml`'s types.
+- **Changes made outside come in live.** An agent's edit to another block appears at once, lit; one to the block you're typing in is held with a panel, and you keep yours or take theirs. A field changed outside while you edit it is offered, never overwritten. Unsaved text is kept in the tab, and survives a reload.
+- **Pasting can't load or run anything**: pasted Markdown and HTML are read without being drawn first, a remote image waits behind Load, and a link to an address the link rule refuses keeps its text only.
+- **The changes view (`/changes`, or "Review changes" in the palette)**: every uncommitted change, yours or an agent's, per file. A page is drawn as the reader draws it, with its changed fields, blocks added, removed and moved, and changed words marked; the raw lines are a click away. Discard a change, a field or a whole file, asked once in place. Commit the files you tick, each as you saw it; a new file that isn't a page, or one that arrived after you opened the view, starts unticked, and a file whose name starts with a dot is never shown or committed. A page with changes says "Not committed" in its toolbar, linking there. On a network address without `--edit`, the view is read-only.
+- **The git popover lists what changed and opens the changes view**; its button only pushes.
+
+- **Download a dataset as CSV or JSON.** A `type: dataset` page with one table has "CSV" and "JSON" buttons in its toolbar, through `GET /api/table/{path}?format=csv|json`: the bytes `wiki table --format csv|json` prints, from the same writer, so a CSV cell that would run as a formula in a spreadsheet starts with `'`. It comes as an attachment named after the page: its own name in `filename*` (RFC 6266), and in `filename` with only letters, digits, `.`, `_` and `-`, with `nosniff`, behind the same token as the rest of `/api`, and works on a read-only network address. A page with no table is `404`, one with several `422`.
 
 ### Security
 
