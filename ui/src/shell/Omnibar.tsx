@@ -1,3 +1,4 @@
+import { ModKey } from "@/ui/ModKey";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import type { TreeNode } from "@/api";
@@ -78,8 +79,8 @@ export function Omnibar({
           <path d="M20 20l-3.5-3.5" />
         </svg>
         <span className="flex-1 truncate">Search or run a command…</span>
-        <kbd className="border-line-2 text-muted shrink-0 rounded-[5px] border px-1.5 py-px font-mono text-[11px]">
-          ⌘K
+        <kbd className="border-line-2 text-muted flex shrink-0 items-center rounded-[5px] border px-1.5 py-px font-mono text-[11px]">
+          <ModKey />K
         </kbd>
       </button>
       )}
@@ -247,7 +248,9 @@ function Palette({
         <div className="border-line text-faint flex gap-4 border-t px-4 py-2.5 text-[11.5px]">
           <span>↑↓ navigate</span>
           <span>↵ open</span>
-          <span>⌘K toggle</span>
+          <span>
+            <ModKey />K toggle
+          </span>
         </div>
       </div>
     </div>

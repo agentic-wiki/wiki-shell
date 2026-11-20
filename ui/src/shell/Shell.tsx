@@ -400,7 +400,10 @@ export function Shell({
           <Drawer onClose={() => setDrawer(false)}>{panelFor(hasPanel(section) ? section : "entries")}</Drawer>
         )}
 
-        <main ref={viewRef} className="min-w-0 grow overflow-y-auto">
+        {/* Relative, so whatever a view positions absolutely (a screen reader's
+            live region, say) scrolls with the view, and never makes the page
+            itself scroll past it. */}
+        <main ref={viewRef} className="relative min-w-0 grow overflow-y-auto">
           <ScrollRestoration containerRef={viewRef} />
           <GitContext value={[git, setGit]}>{children}</GitContext>
         </main>

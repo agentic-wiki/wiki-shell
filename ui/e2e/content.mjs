@@ -145,6 +145,9 @@ async function interact(browser, page, reader) {
   const box = await first.boundingBox();
   await p.mouse.click(box.x + box.width - 4, box.y + 10);
   await p.mouse.move(0, 0);
+  // Only the view scrolls, never the page around it: a page that did could be
+  // scrolled a whole window past the entry, onto nothing.
+  if (await p.evaluate(() => document.scrollingElement.scrollHeight > innerHeight)) problems.push("the page itself scrolls");
   await p.evaluate(() => {
     for (const el of document.querySelectorAll("[data-chrome]")) el.style.visibility = "hidden";
   });

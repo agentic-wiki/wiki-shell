@@ -1,4 +1,5 @@
-import type { Node } from "@milkdown/prose/model";
+import { Fragment, type Node } from "@milkdown/prose/model";
+import type { Transaction } from "@milkdown/prose/state";
 import { matches } from "@/edit/diff";
 import { keyOf, unitsOf } from "@/edit/blocks";
 
@@ -189,4 +190,26 @@ function range(from: number, to: number): number[] {
 export function rewritten(base: Node, theirs: Node): boolean {
   const b = tops(base);
   return b.length > 0 && matches(b.map((n) => n.key), tops(theirs).map((n) => n.key)).length === 0;
+}
+
+/**
+ * Applies an outside change to [from, to) as only what differs: the shared
+ * start and end of the old and new nodes are left in place. So the user's own
+ * steps in that block map through it, and undo keeps walking them back,
+ * instead of losing every step that touched a block replaced whole.
+ */
+export function replaceChanged(tr: Transaction, from: number, to: number, nodes: Node[]): void {
+  const was = tr.doc.slice(from, to).content;
+  const now = Fragment.from(nodes);
+  const start = was.findDiffStart(now);
+  if (start === null) return; // the same nodes
+  let { a: endWas, b: endNow } = was.findDiffEnd(now)!;
+  // Repeated text can make the ends cross the start: move them back past it.
+  const overlap = start - Math.min(endWas, endNow);
+  if (overlap > 0) {
+    endWas += overlap;
+    endNow += overlap;
+  }
+  const doc = tr.doc.type.create(null, now);
+  tr.replace(from + start, from + endWas, doc.slice(start, endNow));
 }

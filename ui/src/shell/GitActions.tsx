@@ -234,7 +234,6 @@ function Popover({
 
   const toast = useToast();
   const navigate = useNavigate();
-  const { bundle } = useBundle();
 
   // Escape, and a press anywhere outside the pill and the popover, close it.
   useEscape(onClose);
@@ -429,7 +428,7 @@ function Popover({
                 }}
                 className="border-line-2 text-fg hover:bg-fg/5 h-8.5 w-full rounded-[9px] border font-medium"
               >
-                {bundle.editable ? "Review and commit" : "Review changes"}
+                Review changes
               </button>
             )}
           </>

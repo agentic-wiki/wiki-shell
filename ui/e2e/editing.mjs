@@ -104,7 +104,14 @@ try {
   check((await handle.count()) === 1, "hovering a block shows its handle");
   check((await handle.locator("svg circle").count()) === 6, "the handle is drawn, six dots");
   await handle.click();
-  check((await p.locator("[role=menuitem][aria-current]").innerText()).trim() === "Text", "its menu marks what the block is now");
+  check((await p.locator("[role=menuitemradio][aria-checked=true]").innerText()).trim() === "Text", "its menu marks what the block is now");
+  await handle.click();
+  check((await p.locator("[role=menu][aria-label=Block]").count()) === 0, "a second click on the handle closes its menu");
+  await handle.click();
+  await p.mouse.click(5, 5);
+  check((await p.locator("[role=menu][aria-label=Block]").count()) === 0, "and so does a click elsewhere");
+  await first.hover();
+  await handle.click();
   await p.getByRole("menuitem", { name: "Move down" }).click();
   check((await p.locator("article .ProseMirror > *").first().innerText()).includes("A heading"), "its menu moves the block");
   await first.click();

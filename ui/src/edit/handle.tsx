@@ -158,6 +158,7 @@ export function blockHandle(page: HandlePage): Plugin {
             lit={lit}
             menu={menu}
             onMenu={setMenu}
+            onToggle={() => setMenu(!menu)}
             onEnter={() => clearTimeout(grace)}
             onLeave={() => leave()}
           />,
@@ -266,6 +267,7 @@ function Handle({
   lit,
   menu,
   onMenu,
+  onToggle,
   onEnter,
   onLeave,
 }: {
@@ -277,6 +279,9 @@ function Handle({
   lit: boolean;
   menu: boolean;
   onMenu: (open: boolean) => void;
+  /** Opens or closes the menu by the plugin's own state, not the last one
+   *  drawn, so a second click always closes it. */
+  onToggle: () => void;
   onEnter: () => void;
   onLeave: () => void;
 }) {
@@ -286,6 +291,15 @@ function Handle({
   useEffect(() => {
     if (menu) first.current?.focus();
   }, [menu]);
+  // A press anywhere but the handle and its menu closes the menu.
+  useEffect(() => {
+    if (!menu) return;
+    const outside = (e: PointerEvent) => {
+      if (!(e.target instanceof Element && e.target.closest("[data-block-handle]"))) onMenu(false);
+    };
+    document.addEventListener("pointerdown", outside, true);
+    return () => document.removeEventListener("pointerdown", outside, true);
+  }, [menu, onMenu]);
 
   // Where a drag would put the block: before the sibling under the pointer.
   const target = (y: number): { index: number; line: number } | null => {
@@ -326,7 +340,7 @@ function Handle({
         onMouseEnter={onEnter}
         onMouseLeave={onLeave}
         onMouseDown={(e) => e.preventDefault()}
-        onClick={() => onMenu(!menu)}
+        onClick={onToggle}
         onPointerDown={(e) => {
           if (e.button !== 0) return;
           const startY = e.clientY;
@@ -372,7 +386,7 @@ function Handle({
           style={{ position: "fixed", top: top + 30, left }}
           onMouseEnter={onEnter}
           onKeyDown={(e) => {
-            const items = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("[role=menuitem]")];
+            const items = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("[role^=menuitem]")];
             const i = items.indexOf(document.activeElement as HTMLButtonElement);
             if (e.key === "ArrowDown" || e.key === "ArrowUp") {
               e.preventDefault();
@@ -393,8 +407,8 @@ function Handle({
                 key={label}
                 ref={i === 0 ? first : undefined}
                 type="button"
-                role="menuitem"
-                aria-current={current || undefined}
+                role="menuitemradio"
+                aria-checked={current}
                 onClick={() => act(() => (caretIn(), page.run(command)), `Turned into ${label.toLowerCase()}`)}
                 className={[
                   "hover:bg-fg/6 focus:bg-fg/6 flex w-full items-center rounded-lg px-2.5 py-1 text-left outline-none",

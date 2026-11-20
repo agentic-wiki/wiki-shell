@@ -95,13 +95,13 @@ try {
   check((await phone.page.getByRole("group", { name: "Discard this change?" }).count()) === 1, "and a tap asks");
   await phone.context.close();
 
-  // A header whose layout alone changed: one muted row; Discard file restores it.
+  // A header whose layout alone changed: one muted row; Discard changes restores it.
   const b = p.locator("section[data-path='/notes/b.md']");
   check((await b.innerText()).includes("The header's layout changed"), "a reordered header says its layout changed");
-  await b.getByRole("button", { name: "Discard file" }).click();
+  await b.getByRole("button", { name: "Discard changes" }).click();
   await p.getByRole("group", { name: /Discard all changes/ }).getByRole("button", { name: "Discard", exact: true }).click();
   await p.waitForTimeout(1000);
-  check(fs.readFileSync(reordered, "utf8") === original, "Discard file restores it exactly");
+  check(fs.readFileSync(reordered, "utf8") === original, "Discard changes restores it exactly");
 
   // Discard the field change, in place.
   await box.locator("text=status: todo").hover();

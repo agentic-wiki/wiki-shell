@@ -5,7 +5,6 @@ import { diffLines } from "@/changes/lines";
 import { pageRows, withContext, type Row } from "@/changes/rows";
 import { count } from "@/count";
 import { Markdown } from "@/markdown/Markdown";
-import { marked } from "@/markdown/words";
 
 /**
  * A page's diff as the reader draws it (the design's "The rendered diff"):
@@ -85,9 +84,10 @@ export function PageDiff({
           case "changed":
             return (
               <Change key={i} mark="~" tone="changed" said={`Changed: was ${r.from.text}`} discard={discard} question="Discard this change?">
-                <p className={"leading-relaxed whitespace-pre-wrap " + (MONO.has(r.from.kind) ? "font-mono text-[13px]" : "text-[15px]")}>
-                  {marked(r.from.text, r.to.map((b) => b.text).join("\n\n"), "diff")}
-                </p>
+                <Markdown
+                  entry={{ ...entry, body: r.to.map((b) => b.text).join("\n\n"), headings: [], checkboxes: [] }}
+                  was={r.from.text}
+                />
               </Change>
             );
           case "moved": {
@@ -106,9 +106,6 @@ export function PageDiff({
     </div>
   );
 }
-
-/** Kinds drawn as their source, in mono: a code block, a table's rows. */
-const MONO = new Set<Block["kind"]>(["code", "row", "table-head", "html"]);
 
 /** One block, as the reader draws it. A table row has no table to sit in
  *  alone, so it's drawn as its source. */
@@ -191,12 +188,12 @@ function Fold({ rows, entry }: { rows: Row[]; entry: Entry }) {
 
 /**
  * A header whose layout changed but not its fields: a muted row that unfolds
- * to its raw lines. It has no Discard: Discard file restores it exactly.
+ * to its raw lines. It has no Discard: Discard changes restores it exactly.
  */
 function Layout({ raw }: { raw: string }) {
   const lines = useMemo(() => headerLines(raw), [raw]);
   return (
-    <details className="text-muted px-5 py-1 text-[12.5px]" title="Discard file restores it exactly.">
+    <details className="text-muted px-5 py-1 text-[12.5px]" title="Discard changes restores it exactly.">
       <summary className="cursor-pointer">The header's layout changed (order, comments or quoting)</summary>
       <pre className="bg-panel-2 mt-1.5 overflow-x-auto rounded-md p-2 font-mono text-[12px]">
         {lines.map((l, i) => (

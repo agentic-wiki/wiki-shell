@@ -3,6 +3,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { remarkCallout } from "./callout";
+import { remarkWordMarks } from "./wordmarks";
 import type { Entry } from "@/api";
 import { Heading, Image, PageLink, Quote, RemoteImages, RemoteImagesContext, Table, TaskItem } from "@/markdown/blocks";
 import { imageSource, linkTarget } from "@/markdown/href";
@@ -33,6 +34,7 @@ export function Markdown({
   entry,
   onToggleCheckbox,
   destination = (path) => "/wiki" + path,
+  was,
 }: {
   entry: Entry;
   /** Ticks or unticks the to-do item on that body line; absent when the page
@@ -49,6 +51,9 @@ export function Markdown({
    * `entry.links` — this only decides what to do with the answer.
    */
   destination?: (bundlePath: string) => string;
+  /** What this Markdown was: its words are then marked against it, added and
+   *  removed (the changes view's changed blocks). */
+  was?: string;
 }) {
   // Keyed by the href exactly as written, which is what the renderer hands back.
   const links = useMemo(() => new Map(entry.links.map((l) => [l.raw, l])), [entry.links]);
@@ -129,7 +134,7 @@ export function Markdown({
     <RemoteImagesContext value={images}>
       <div className="markdown">
         <ReactMarkdown
-          remarkPlugins={[remarkGfm, remarkCallout]}
+          remarkPlugins={was === undefined ? [remarkGfm, remarkCallout] : [remarkGfm, remarkCallout, [remarkWordMarks, was]]}
           // lowlight ships 37 curated common grammars, which is the subset worth
           // having; passing more only adds to it. Anything unrecognized renders as
           // plain code rather than failing, so an omission costs colour, not a

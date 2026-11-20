@@ -27,7 +27,7 @@ import { type Command, menus } from "@/edit/menus";
 import { conflicts, type Choices, type Held, heldIn, hold, SAID, settleAll, toPanel, withTheirs } from "@/edit/conflicts";
 import { blockHandle } from "@/edit/handle";
 import { linkCard } from "@/edit/linkcard";
-import { plan, rewritten } from "@/edit/sync";
+import { plan, replaceChanged, rewritten } from "@/edit/sync";
 import { Saver } from "@/edit/save";
 import { type Early, registerSaves, type SaveState } from "@/editing";
 import { keyOf, load, type Loaded } from "@/edit/blocks";
@@ -370,7 +370,7 @@ async function takeIn(
       continue;
     }
     const size = step.nodes.reduce((n, node) => n + node.nodeSize, 0);
-    tr.replaceWith(step.from, step.to, step.nodes);
+    replaceChanged(tr, step.from, step.to, step.nodes);
     lit.push({ from: step.from, to: step.from + size, label: step.to > step.from ? "Changed" : "Added" });
   }
   // Positions recorded mid-way are mapped through the steps that came after.

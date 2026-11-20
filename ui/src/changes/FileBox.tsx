@@ -98,7 +98,7 @@ export function FileBox({
       )}
       {can && !modeOnly && (
         <Discard
-          label="Discard file"
+          label="Discard changes"
           question={file.change === "new" ? `Delete ${title}? It was never committed.` : `Discard all changes to ${title}?`}
           onDiscard={() => discard()}
         />
@@ -111,6 +111,9 @@ export function FileBox({
       id={boxId(file.path)}
       data-path={file.path}
       aria-label={title}
+      // Focusable from script only: following a page's "Not committed" chip
+      // lands here, for the keyboard and a screen reader.
+      tabIndex={-1}
       className="border-line scroll-mt-2 shrink-0 overflow-clip rounded-[10px] border"
     >
       {/* On a phone the title and path take the first line whole, the path
@@ -122,7 +125,8 @@ export function FileBox({
             <span className={"font-medium " + (narrow ? "break-words" : "truncate")}>{title}</span>
             <span className={"text-faint font-mono text-[11.5px] " + (narrow ? "break-all" : "truncate")}>
               {file.from && `${file.from.slice(1)} → `}
-              {file.path.slice(1)} · {file.change}
+              {/* A file with no title is named by its path already. */}
+              {file.title ? `${file.path.slice(1)} · ${file.change}` : file.change}
             </span>
             {notes.map((n) => (
               <span key={n as string} className="text-faint text-[11.5px]">
@@ -173,7 +177,7 @@ export function FileBox({
           </button>
         </p>
       );
-    if (modeOnly) return quiet(modeLine(file.mode!), "Change it back with chmod.");
+    if (modeOnly) return quiet("Only the file's mode changed. Change it back with chmod.");
     if (file.kind === "binary" || diff.raw === undefined) return quiet("A binary file changed.");
     if (folded)
       return (

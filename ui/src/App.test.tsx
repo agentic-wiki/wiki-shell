@@ -3330,7 +3330,7 @@ test("the Changes tab lists every changed file, and opens the changes view to co
   expect(dialog.textContent).toContain("2 files changed, 1 commit to push");
   expect(dialog.querySelector("[aria-label='Commit message']")).toBeNull();
 
-  const review = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Review and commit")!;
+  const review = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Review changes")!;
   await act(async () => review.click());
   expect(here).toBe("/changes");
   expect(asked.length).toBe(0);
@@ -3426,7 +3426,7 @@ test("an action with nothing to do cannot be confirmed", async () => {
   const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Source control']")!;
   const confirm = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Push")!;
   expect(confirm.hasAttribute("disabled")).toBe(true);
-  expect([...dialog.querySelectorAll("button")].some((b) => b.textContent === "Review and commit")).toBe(false);
+  expect([...dialog.querySelectorAll("button")].some((b) => b.textContent === "Review changes")).toBe(false);
 });
 
 // A dialog whose work is finished has nothing left to say, so it says it and

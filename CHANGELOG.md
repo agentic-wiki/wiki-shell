@@ -2,6 +2,21 @@
 
 All notable changes to WikiShell are documented here. This project follows [semantic versioning](https://semver.org); while pre-1.0, breaking changes bump the minor version.
 
+## Unreleased
+
+### Fixed
+
+- **A page no longer scrolls past its end** into an empty screen: only the view scrolls.
+- **A second click on a block's handle closes its menu**, and so does a click anywhere else.
+- **Undo keeps working after a change made outside**: it steps back through your own typing and keeps the agent's edit.
+
+### Changed
+
+- **The changes view draws a changed block as the reader does**, with its changed words marked once per run.
+- **"Discard file" is now "Discard changes"**, and the git popover's button always reads "Review changes".
+- **Shortcut hints draw their key**: ⌘ on a Mac, "Ctrl" elsewhere.
+- Small polish: a file's path and its mode change are shown once, the phone's file picker reads "3 of 7 · title", "Turn into" marks the current kind for screen readers, and following the "arrived" chip moves focus to that file.
+
 ## v0.20.0
 
 Editing pages in place, and the changes view to review and commit what changed: the server (the editor ADR's and the changes-view ADR's slice 2) and the app (slice 3). Needs `wiki` v0.23.1.

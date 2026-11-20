@@ -33,7 +33,7 @@ type Server = {
 };
 
 /** Mounts the view against `server`, and returns what it was sent. */
-async function mount(server: Server, opts: { editable?: boolean; status?: GitStatus } = {}) {
+async function mount(server: Server, opts: { editable?: boolean; status?: GitStatus; at?: string } = {}) {
   const sent: { path: string; body: Record<string, unknown> }[] = [];
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -55,7 +55,7 @@ async function mount(server: Server, opts: { editable?: boolean; status?: GitSta
   root = createRoot(host);
   await act(async () => {
     root!.render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[opts.at ?? "/changes"]}>
         <BundleProvider bundle={{ ...bundle, editable: opts.editable ?? true }} tree={tree}>
           <ToastProvider>
             <GitContext value={[opts.status ?? git, () => {}]}>
@@ -169,8 +169,8 @@ test("a page's diff is drawn by block: fields, changed words, a move, an additio
   // The field: was struck, now beside it.
   expect(box.textContent).toContain("status: todo → done");
   // The changed block, word by word.
-  expect([...box.querySelectorAll("del")].map((d) => d.textContent)).toContain("removed here.");
-  expect([...box.querySelectorAll("ins")].map((d) => d.textContent)).toContain("added there.");
+  expect([...box.querySelectorAll("del")].map((d) => d.textContent)).toContain("removed: here.");
+  expect([...box.querySelectorAll("ins")].map((d) => d.textContent)).toContain("added: there.");
   // The move, drawn at its new place only.
   expect(box.textContent).toContain("Moved from under 'Plan'");
   expect(box.textContent!.match(/Third\./g)?.length).toBe(1);
@@ -202,7 +202,7 @@ test("a discard refused because the file changed says so, and Show redraws it", 
     diffs: { "/notes/a.md": () => json(pageDiff(version)) },
     post: () => json({ error: "This file changed after you read it. Nothing was discarded.", version: "v2" }, 409),
   });
-  await click(button("Discard file"));
+  await click(button("Discard changes"));
   expect(text()).toContain("Discard all changes to A?");
   await click(button("Discard", question()));
   expect(text()).toContain("This file changed after you read it. Nothing was discarded.");
@@ -253,7 +253,7 @@ test("a new file that isn't a page starts unticked; a dot file has no checkbox a
   const boxes = (p: string) => host!.querySelector(`section[data-path='${p}']`)!;
   expect(boxes("/exports/clients.csv").textContent).toContain("New file, not a page: tick to include.");
   expect(boxes("/.env").textContent).toContain("Not shown or committed here");
-  expect(button("Discard file", boxes("/.env"))).toBeUndefined();
+  expect(button("Discard changes", boxes("/.env"))).toBeUndefined();
   expect(text()).toContain("1 of 2 files");
   expect(text()).toContain("1 dot file is left for git.");
 });
@@ -363,7 +363,7 @@ test("a header whose layout alone changed is one muted row, unfolding to its lin
   });
   const row = host!.querySelector("details")!;
   expect(row.querySelector("summary")!.textContent).toBe("The header's layout changed (order, comments or quoting)");
-  expect(row.getAttribute("title")).toBe("Discard file restores it exactly.");
+  expect(row.getAttribute("title")).toBe("Discard changes restores it exactly.");
   expect([...row.querySelectorAll("pre > div")].map((d) => d.textContent)).toEqual([" ---", "-type: note", " status: todo", "+type: note", " ---"]);
 });
 
@@ -394,4 +394,23 @@ test("a file that arrives after the view opened starts unticked, and says so", a
   expect(b.textContent).toContain("Arrived after you opened this: tick to include.");
   expect(host!.querySelector("[aria-label='notes/b.md, modified, arrived after you opened this']")).not.toBeNull();
   expect(text()).toContain("1 of 2 files");
+});
+
+test("following a page's chip lands on its box, focused", async () => {
+  await mount(
+    { list: list([page(), page({ path: "/notes/b.md", title: "B" })]), diffs: { "/notes/a.md": () => json(pageDiff()), "/notes/b.md": () => json(pageDiff()) } },
+    { at: "/changes#%2Fnotes%2Fb.md" },
+  );
+  expect((document.activeElement as HTMLElement).dataset.path).toBe("/notes/b.md");
+});
+
+test("a file that isn't a page names its path once, and a mode-only change says so", async () => {
+  await mount({
+    list: list([{ path: "/run.sh", change: "modified", version: "r1", kind: "text", added: 0, removed: 0, mode: { from: "100644", to: "100755" } }]),
+    diffs: { "/run.sh": () => json({ version: "r1", raw: "diff --git a/run.sh b/run.sh\nold mode 100644\nnew mode 100755\n", hunks: [] }) },
+  });
+  const box = host!.querySelector("section")!;
+  expect(box.textContent!.match(/run\.sh/g)?.length).toBe(1);
+  expect(box.textContent!.match(/Now executable/g)?.length).toBe(1);
+  expect(box.textContent).toContain("Only the file's mode changed. Change it back with chmod.");
 });

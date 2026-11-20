@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { api, ApiError, type Entry } from "@/api";
 import { Glyph } from "@/ui/IconButton";
+import { ModKey } from "@/ui/ModKey";
 
 /**
  * A page's fields, edited where they are shown (the design's §1, "Frontmatter
@@ -242,7 +243,12 @@ export function FieldValue({
           onBlur={() => !theirs && void save(editing)}
         />
       )}
-      {kind === "list" && <span className="text-faint text-[11.5px]">One item a line; ⌘Enter or leaving saves.</span>}
+      {kind === "list" && (
+        <span className="text-faint text-[11.5px]">
+          One item a line; <ModKey />
+          Enter or leaving saves.
+        </span>
+      )}
       {problem && <Problem id={reason} text={problem} />}
       {conflict}
     </span>

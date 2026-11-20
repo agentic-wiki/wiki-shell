@@ -103,7 +103,7 @@ export function ChangesView({ refresh }: { refresh: number }) {
         )}
         <div className="flex min-w-0 grow flex-col gap-4 pb-6">
           <h1 className="text-fg text-[24px] font-bold tracking-[-0.02em]">Changes</h1>
-          {narrow && <Picker files={files} />}
+          {narrow && <Picker files={files} reading={reading} />}
           {list.outside > 0 && (
             <p className="text-warn bg-warn/8 border-warn/25 rounded-lg border px-2.5 py-2 text-xs">
               {count(list.outside, "staged file")} elsewhere in this repository {list.outside === 1 ? "is" : "are"} outside the
@@ -221,17 +221,15 @@ function Tree({
 }
 
 /** On a narrow screen, where there is no tree: a select that scrolls to a file. */
-function Picker({ files }: { files: ChangedFile[] }) {
+function Picker({ files, reading }: { files: ChangedFile[]; reading?: string }) {
+  // It shows the file being read: "3 of 7 · <title>".
   return (
     <select
       aria-label="Go to a file"
-      defaultValue=""
+      value={reading ?? files[0]?.path}
       onChange={(e) => document.getElementById(boxId(e.target.value))?.scrollIntoView({ block: "start" })}
       className="bg-panel border-line rounded-md border px-2 py-1.5 text-[13px]"
     >
-      <option value="" disabled>
-        {count(files.length, "changed file")}
-      </option>
       {files.map((f, i) => (
         <option key={f.path} value={f.path}>
           {i + 1} of {files.length} · {f.title || f.path.slice(1)}
@@ -241,7 +239,8 @@ function Picker({ files }: { files: ChangedFile[] }) {
   );
 }
 
-/** Once the files are drawn, scrolls to the one the address names
+/** Once the files are drawn, scrolls to the one the address names, and
+ *  focuses it
  *  (`/changes#/notes/a.md`, from a page's "Not committed" chip). */
 function useScrollToHash(ready: boolean) {
   const { hash } = useLocation();
@@ -249,7 +248,9 @@ function useScrollToHash(ready: boolean) {
   useEffect(() => {
     if (!ready || done.current || !hash) return;
     done.current = true;
-    document.getElementById(boxId(decodeURIComponent(hash.slice(1))))?.scrollIntoView({ block: "start" });
+    const box = document.getElementById(boxId(decodeURIComponent(hash.slice(1))));
+    box?.scrollIntoView({ block: "start" });
+    box?.focus({ preventScroll: true });
   }, [ready, hash]);
 }
 
