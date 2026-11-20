@@ -3250,6 +3250,7 @@ async function openGit(tab: "Incoming" | "Changes"): Promise<HTMLElement> {
 const gitDefaults: GitStatus = {
   repo: true,
   branch: "main",
+  head: "1a2b3c4",
   remote: "origin/main",
   ahead: 0,
   behind: 0,
@@ -6676,4 +6677,29 @@ test("a download that can't reach WikiShell says so", async () => {
   } finally {
     restore();
   }
+});
+
+// Any repository has a pill (Leady, msg-978): without an upstream it offers
+// the changes and Review changes, with nothing to pull from or push to.
+test("a repository with no upstream has the pill: its changes, no pull or push", async () => {
+  const { pill } = await mountWithGit({ remote: "", changes: [{ path: "notes/a.md", code: " M" }] });
+  expect(pill).not.toBeNull();
+  expect(pill.textContent).toContain("main");
+  expect(pill.textContent).not.toContain("synced");
+  await act(async () => pill.click());
+  const dialog = document.querySelector<HTMLElement>("[role='dialog'][aria-label='Source control']")!;
+  expect(dialog.querySelector("[role='tablist']")).toBeNull();
+  expect(dialog.textContent).toContain("notes/a.md");
+  expect([...dialog.querySelectorAll("button")].map((b) => b.textContent)).toContain("Review changes");
+  expect([...dialog.querySelectorAll("button")].some((b) => b.textContent === "Push" || b.textContent === "Pull & rebase")).toBe(false);
+});
+
+test("a detached HEAD says so, with its commit", async () => {
+  const { pill } = await mountWithGit({ branch: "", head: "abc1234", remote: "" });
+  expect(pill.textContent).toContain("Detached at abc1234");
+});
+
+test("a repository with no commit yet doesn't read as detached", async () => {
+  const { pill } = await mountWithGit({ branch: "", head: "", remote: "" });
+  expect(pill.textContent).not.toContain("Detached");
 });

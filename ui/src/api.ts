@@ -880,6 +880,8 @@ export interface GitStatus {
    *  actions are then absent rather than broken. */
   repo: boolean;
   branch: string;
+  /** HEAD's short commit, "" on an unborn branch: a detached HEAD says it. */
+  head: string;
   /** The upstream this branch tracks, empty when it tracks none: without one
    *  there is nothing to pull from or push to. */
   remote: string;

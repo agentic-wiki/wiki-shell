@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 const status = (changes: GitStatus["changes"]) =>
-  ({ repo: true, branch: "main", remote: "", ahead: 0, behind: 0, changes, outside: 0, incoming: [] }) as GitStatus;
+  ({ repo: true, branch: "main", head: "1a2b3c4", remote: "", ahead: 0, behind: 0, changes, outside: 0, incoming: [] }) as GitStatus;
 
 async function mount(git: GitStatus, files: string[]) {
   const asked: string[] = [];

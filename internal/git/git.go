@@ -33,6 +33,9 @@ type Status struct {
 	Repo bool `json:"repo"`
 	// Branch is the current branch, empty on a detached HEAD.
 	Branch string `json:"branch"`
+	// Head is HEAD's short sha, on a branch or detached, so a detached HEAD
+	// can say where it is. Empty before the first commit.
+	Head string `json:"head"`
 	// Remote is the upstream this branch tracks, empty when it tracks none.
 	// Without one there is nothing to pull from or push to.
 	Remote string `json:"remote"`
@@ -117,8 +120,12 @@ func Repo(dir string) Status {
 	s := Status{Repo: true, Changes: []Change{}, Incoming: []Commit{}}
 	// A detached HEAD has no branch name, which is a state to report rather than
 	// an error: you can still see what changed, you just cannot push.
-	if branch, err := run(context.Background(), dir, "rev-parse", "--abbrev-ref", "HEAD"); err == nil && branch != "HEAD" {
+	// symbolic-ref fails only then; it names a branch with no commit yet too.
+	if branch, err := run(context.Background(), dir, "symbolic-ref", "--quiet", "--short", "HEAD"); err == nil {
 		s.Branch = branch
+	}
+	if head, err := run(context.Background(), dir, "rev-parse", "--short", "HEAD"); err == nil {
+		s.Head = head
 	}
 	if remote, err := run(context.Background(), dir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"); err == nil {
 		s.Remote = remote

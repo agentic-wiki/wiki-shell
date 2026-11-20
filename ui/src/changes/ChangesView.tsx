@@ -8,7 +8,7 @@ import { fileTree, treeOrder, type TreeNode } from "@/changes/lines";
 import { proposeMessage } from "@/changes/message";
 import { count } from "@/count";
 import { NARROW, useMedia } from "@/media";
-import { useGit } from "@/shell/GitActions";
+import { detached, useGit } from "@/shell/GitActions";
 import { Glyph } from "@/ui/IconButton";
 import { State, StateIcon, stateButton } from "@/ui/State";
 import { useToast } from "@/ui/Toast";
@@ -296,7 +296,7 @@ function CommitBar({
   versionOf: (f: ChangedFile) => string;
   onCommitted: () => Promise<void>;
 }) {
-  const [, setStatus] = useGit();
+  const [status, setStatus] = useGit();
   const toast = useToast();
   const [typed, setTyped] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -359,6 +359,8 @@ function CommitBar({
         <span className="text-faint flex flex-col text-xs">
           {ticked.length} of {count(committable, "file")}
           {dots > 0 && <span>{count(dots, "dot file")} {dots === 1 ? "is" : "are"} left for git.</span>}
+          {/* Committing still works there; the commits just belong to no branch. */}
+          {status && detached(status) && <span className="text-warn">Not on a branch: these commits won't be on any branch.</span>}
         </span>
         <button
           type="button"

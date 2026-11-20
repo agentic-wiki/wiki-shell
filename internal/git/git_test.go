@@ -114,6 +114,31 @@ func TestStatusReadsTheBranchAndItsUpstream(t *testing.T) {
 	}
 }
 
+// Head is HEAD's short sha on a branch and on a detached HEAD alike, so a
+// detached one can say where it is; "" before the first commit and outside a
+// repository. Before the first commit, the branch is still named: a new
+// repository isn't detached.
+func TestStatusCarriesHeadsShortSha(t *testing.T) {
+	clone, _ := repoPair(t)
+	sha := must(t, clone, "rev-parse", "--short", "HEAD")
+	if s := Repo(clone); s.Head != sha || s.Branch != "main" {
+		t.Errorf("on a branch: head %q branch %q, want %q main", s.Head, s.Branch, sha)
+	}
+	must(t, clone, "checkout", "--quiet", "--detach")
+	if s := Repo(clone); s.Head != sha || s.Branch != "" {
+		t.Errorf("detached: head %q branch %q, want %q and no branch", s.Head, s.Branch, sha)
+	}
+
+	unborn := t.TempDir()
+	must(t, unborn, "init", "--quiet", "--initial-branch=main")
+	if s := Repo(unborn); !s.Repo || s.Head != "" || s.Branch != "main" {
+		t.Errorf("unborn: %+v, want branch main and no head", s)
+	}
+	if s := Repo(t.TempDir()); s.Head != "" {
+		t.Errorf("outside a repository: head %q", s.Head)
+	}
+}
+
 // The preview has to show everything a commit would carry, including work
 // somebody else did: an agent editing alongside is the expected case, and hiding
 // its files would be lying about what the button does.

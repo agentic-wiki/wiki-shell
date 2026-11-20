@@ -8,18 +8,21 @@ All notable changes to WikiShell are documented here. This project follows [sema
 
 - **Create an entry from the app.** One New entry dialog (title, type, where, and the file it will make), from the tree's +, the palette, the `/` menu, the link picker and a missing link's "Create it". It opens the page ready to type and puts the link where you were. "Create it" starts from the file the link names, and no longer writes a page without a type.
 - **`GET /api/entries/new?in=…&type=…&title=…`** drafts a new page without writing it: the path, named from the title by `wiki`'s `parse.FileSlug`, in the folder given or in an entry's own folder (`/spec/thing.md` → `/spec/thing/…`), and its first content, a header of `type`, `title` and `tags: []`. Posted unchanged to `POST /api/entries`, it creates the page. `409` where a file is, with the taken `path` (`POST /api/entries`'s `409` says the same now); `422` for a title with no letter or digit, an undeclared type, a reserved name (`index`, `log`), or a folder outside the wiki or left out by `wiki.toml`'s `ignore` (`wiki`'s `Index.CheckNewEntry`, the check `POST /api/entries` makes). Needs `wiki` v0.24.0.
+- **`GET /api/git` says where HEAD is**: `head`, its short sha, on a branch or detached (`""` before the first commit), so a detached HEAD can read "Detached at abc1234".
 
 ### Fixed
 
 - **Adding a block no longer ends in an edit conflict.** A new empty block (Enter, then a pause, a space or a line break) was saved with no text, refused, and shown as a conflict; it's now saved once it has text, and emptying a block deletes it.
 - **A refused save says "Not saved" with its reason**, keeps your text, and never shows as a conflict.
 - **"Put it back" saves text kept before this fix.**
+- **A new repository isn't "detached"**: before its first commit, `GET /api/git`'s `branch` names the branch.
 - **A page no longer scrolls past its end** into an empty screen: only the view scrolls.
 - **A second click on a block's handle closes its menu**, and so does a click anywhere else.
 - **Undo keeps working after a change made outside**: it steps back through your own typing and keeps the agent's edit.
 
 ### Changed
 
+- **The git pill shows for any repository.** With no upstream it lists the changes and Review changes, without pull or push. A detached HEAD reads "Detached at abc1234", and the changes view says commits there go on no branch; a repository with no commit reads "No commits yet".
 - **The changes view draws a changed block as the reader does**, with its changed words marked once per run.
 - **Discarding a new file asks "Are you sure?"**
 - **"Discard file" is now "Discard changes"**, and the git popover's button always reads "Review changes".

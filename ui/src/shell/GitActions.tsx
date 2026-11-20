@@ -76,9 +76,9 @@ export function GitActions({
         </Glyph>
       </IconButton>
 
-      {/* Nothing to pull from or push to without an upstream, so there is
-          nothing to offer. */}
-      {status?.repo && status.remote !== "" && (
+      {/* In any repository: its changes and Review changes always; pull and
+          push only with an upstream to reach. */}
+      {status?.repo && (
         <div ref={anchor}>
           <Pill status={status} compact={compact} open={open !== null} onClick={() => setOpen(open ? null : firstTab(status))} />
           {open && (
@@ -134,6 +134,7 @@ export function useGitStatus(refresh: number): [GitStatus | null, (status: GitSt
  * network first for a read nobody asked for.
  */
 export function firstTab(status: GitStatus): Tab {
+  if (!status.remote) return "changes"; // nothing to pull from
   return status.changes.length > 0 || status.ahead > 0 ? "changes" : "incoming";
 }
 
@@ -156,7 +157,8 @@ function Pill({
   onClick: () => void;
 }) {
   const changed = status.changes.length;
-  const synced = status.behind === 0 && status.ahead === 0 && changed === 0;
+  const upstream = status.remote !== "";
+  const synced = upstream && status.behind === 0 && status.ahead === 0 && changed === 0;
   return (
     <button
       type="button"
@@ -164,7 +166,7 @@ function Pill({
       aria-label="Source control"
       aria-haspopup="dialog"
       aria-expanded={open}
-      title={`${status.branch || "detached"} ⇄ ${status.remote}`}
+      title={upstream ? `${where(status)} ⇄ ${status.remote}` : where(status)}
       className={[
         "bg-panel-2 text-muted flex h-8.5 items-center gap-2 rounded-[9px] border px-2.5 font-mono text-xs",
         open ? "border-accent" : "border-line hover:border-line-2",
@@ -176,7 +178,7 @@ function Pill({
         <circle cx="18" cy="7" r="2.2" />
         <path d="M6 7.2v9.6M18 9.2c0 4.5-7 3.5-11.2 7.8" />
       </Glyph>
-      {!compact && <span className="text-fg">{status.branch || "detached"}</span>}
+      {!compact && <span className="text-fg">{where(status)}</span>}
       {status.behind > 0 && (
         <span className="text-accent-ink" title={`${status.behind} to pull`}>
           ↓{status.behind}
@@ -297,7 +299,7 @@ function Popover({
         <div className="min-w-0 flex-1">
           <div className="font-semibold">Source control</div>
           <div className="text-faint mt-0.5 truncate font-mono text-xs">
-            {status.branch || "detached"} ⇄ {status.remote}
+            {status.remote ? `${where(status)} ⇄ ${status.remote}` : where(status)}
           </div>
         </div>
         <IconButton label="Close" size="xs" onClick={onClose}>
@@ -307,7 +309,8 @@ function Popover({
         </IconButton>
       </header>
 
-      <div role="tablist" className="bg-panel-2 mx-3.5 grid grid-cols-2 gap-1 rounded-[9px] p-[3px]">
+      {/* Incoming only with an upstream to pull from. */}
+      {status.remote && <div role="tablist" className="bg-panel-2 mx-3.5 grid grid-cols-2 gap-1 rounded-[9px] p-[3px]">
         {(
           [
             ["incoming", "Incoming", status.behind],
@@ -328,7 +331,7 @@ function Popover({
             {label} <span className="text-faint font-mono text-[11px]">{n}</span>
           </button>
         ))}
-      </div>
+      </div>}
 
       <div className="max-h-[70vh] space-y-3 overflow-y-auto px-3.5 pt-3 pb-3.5 text-[13px]">
         {tab === "incoming" ? (
@@ -400,7 +403,9 @@ function Popover({
         ) : (
           <>
             <p className="text-muted mx-0.5">
-              {`${count(changed, "file")} changed, ${count(status.ahead, "commit")} to push.`}
+              {status.remote
+                ? `${count(changed, "file")} changed, ${count(status.ahead, "commit")} to push.`
+                : `${count(changed, "file")} changed. No upstream to push to.`}
             </p>
             {/* Everything a commit could take, including work somebody else
                 did: an agent editing alongside is the expected case. */}
@@ -436,7 +441,7 @@ function Popover({
 
         {error && <p className="text-danger">{error}</p>}
 
-        <div className="flex items-center gap-2">
+        {status.remote && <div className="flex items-center gap-2">
           <span className="text-faint flex-1 text-xs">
             {tab === "changes" && `${status.ahead} commit${status.ahead === 1 ? "" : "s"} ahead`}
           </span>
@@ -455,11 +460,21 @@ function Popover({
               {busy ? "Pushing…" : "Push"}
             </Primary>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );
 }
+
+/** Where the repository is: its branch, or "Detached at abc1234". */
+function where(status: GitStatus): string {
+  if (detached(status)) return `Detached at ${status.head}`;
+  return status.branch || "No commits yet";
+}
+
+/** On no branch: no branch name, but a commit. A repository with no commit
+ *  yet has neither, and isn't detached. */
+export const detached = (status: GitStatus) => !status.branch && !!status.head;
 
 /** The accent button that does the thing. Inert when there is nothing to do,
  *  rather than offering a button whose only outcome is saying it did nothing. */

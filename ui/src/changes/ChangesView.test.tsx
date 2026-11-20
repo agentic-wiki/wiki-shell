@@ -22,7 +22,7 @@ afterEach(() => {
 
 const bundle = { id: "b", label: "Notes", editable: true, types: [] } as unknown as BundleInfo;
 const tree = { path: "/", entries: [], children: [] } as unknown as TreeNode;
-const git = { repo: true, branch: "main", remote: "origin/main", ahead: 0, behind: 0, changes: [], outside: 0, incoming: [] } as GitStatus;
+const git = { repo: true, branch: "main", head: "1a2b3c4", remote: "origin/main", ahead: 0, behind: 0, changes: [], outside: 0, incoming: [] } as GitStatus;
 const json = (v: unknown, status = 200) =>
   new Response(JSON.stringify(v), { status, headers: { "content-type": "application/json" } });
 
@@ -413,6 +413,17 @@ test("a file that isn't a page names its path once, and a mode-only change says 
   expect(box.textContent!.match(/run\.sh/g)?.length).toBe(1);
   expect(box.textContent!.match(/Now executable/g)?.length).toBe(1);
   expect(box.textContent).toContain("Only the file's mode changed. Change it back with chmod.");
+});
+
+test("on a detached HEAD, the commit bar says the commits won't be on a branch, and Commit still works", async () => {
+  await mount({ list: list([page()]), diffs: { "/notes/a.md": () => json(pageDiff()) } }, { status: { ...git, branch: "", head: "abc1234" } });
+  expect(text()).toContain("Not on a branch: these commits won't be on any branch.");
+  expect(button("Commit")!.disabled).toBe(false);
+});
+
+test("a repository with no commit yet isn't called detached", async () => {
+  await mount({ list: list([page()]), diffs: { "/notes/a.md": () => json(pageDiff()) } }, { status: { ...git, branch: "", head: "" } });
+  expect(text()).not.toContain("Not on a branch");
 });
 
 test("discarding a new file asks \"Are you sure?\"", async () => {

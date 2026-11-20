@@ -218,7 +218,8 @@ GET  /api/board/{id}          one board as columns of cards, in the config's ord
                               entries under it whose frontmatter couldn't be read
 GET  /api/graph/{id}          one graph as nodes and edges, each edge saying which
                               way it points and whether it came from the body or a field
-GET  /api/git                 the bundle's repository: branch, upstream, ahead/behind,
+GET  /api/git                 the bundle's repository: branch ("" when detached), head
+                              (HEAD's short sha, "" before the first commit), upstream, ahead/behind,
                               the commits a pull would take (up to 50, as of the
                               last fetch), and everything a commit would carry
 GET  /api/changes             every uncommitted change in the bundle, with its version,
