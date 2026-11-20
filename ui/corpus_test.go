@@ -29,11 +29,28 @@ type corpusPage struct {
 }
 
 // TestEditorCorpus keeps corpus.json in step with the pages and with wiki's
-// splitter: this repo's backlog, the pages `wiki init --full` scaffolds, and
-// src/edit/testdata/kinds.md, a page of every kind. After changing any of them,
-// or wiki's version: go test ./ui -run EditorCorpus -update.
+// splitter: a frozen copy of this repo's backlog, the pages `wiki init --full`
+// scaffolds, and src/edit/testdata/kinds.md, a page of every kind. After
+// changing kinds.md, or wiki's version: go test ./ui -run EditorCorpus -update.
+//
+// The backlog pages are read from corpus.json itself, not from ../backlog, so
+// editing the backlog never fails this test: they are real-shaped pages, and
+// only their blocks are checked against the splitter.
 func TestEditorCorpus(t *testing.T) {
 	var pages []corpusPage
+	raw, err := os.ReadFile(corpusFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored []corpusPage
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range stored {
+		if strings.HasPrefix(p.Path, "backlog/") {
+			pages = append(pages, corpusPage{p.Path, p.Body, nonNil(parse.Blocks(p.Body))})
+		}
+	}
 	add := func(fsys fs.FS, prefix string) {
 		err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 			if err != nil || d.IsDir() || !strings.HasSuffix(p, ".md") {
@@ -51,7 +68,6 @@ func TestEditorCorpus(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	add(os.DirFS("../backlog"), "backlog/")
 	add(os.DirFS(filepath.Join(wikiDir(t), "internal/scaffold/files")), "scaffold/")
 	add(os.DirFS("src/edit/testdata"), "testdata/")
 	sort.Slice(pages, func(i, j int) bool { return pages[i].Path < pages[j].Path })
@@ -73,8 +89,7 @@ func TestEditorCorpus(t *testing.T) {
 		}
 		return
 	}
-	want, err := os.ReadFile(corpusFile)
-	if err != nil || !bytes.Equal(got, want) {
+	if !bytes.Equal(got, raw) {
 		t.Fatalf("%s is stale: run go test ./ui -run EditorCorpus -update", corpusFile)
 	}
 }

@@ -4,6 +4,11 @@ All notable changes to WikiShell are documented here. This project follows [sema
 
 ## Unreleased
 
+### Added
+
+- **Create an entry from the app.** One New entry dialog (title, type, where, and the file it will make), from the tree's +, the palette, the `/` menu, the link picker and a missing link's "Create it". It opens the page ready to type and puts the link where you were. "Create it" starts from the file the link names, and no longer writes a page without a type.
+- **`GET /api/entries/new?in=…&type=…&title=…`** drafts a new page without writing it: the path, named from the title by `wiki`'s `parse.FileSlug`, in the folder given or in an entry's own folder (`/spec/thing.md` → `/spec/thing/…`), and its first content, a header of `type`, `title` and `tags: []`. Posted unchanged to `POST /api/entries`, it creates the page. `409` where a file is, with the taken `path` (`POST /api/entries`'s `409` says the same now); `422` for a title with no letter or digit, an undeclared type, a reserved name (`index`, `log`), or a folder outside the wiki or left out by `wiki.toml`'s `ignore` (`wiki`'s `Index.CheckNewEntry`, the check `POST /api/entries` makes). Needs `wiki` v0.24.0.
+
 ### Fixed
 
 - **A page no longer scrolls past its end** into an empty screen: only the view scrolls.

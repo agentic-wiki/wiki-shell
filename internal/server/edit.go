@@ -318,7 +318,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	s.editing.Unlock()
 	switch {
 	case errors.Is(err, index.ErrExists):
-		writeJSON(w, http.StatusConflict, errorBody{err.Error()})
+		writeTaken(w, "/"+strings.TrimPrefix(req.Path, "/"))
 		return
 	case err != nil:
 		writeJSON(w, writeStatus(err), errorBody{err.Error()})

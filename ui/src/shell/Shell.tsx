@@ -11,6 +11,8 @@ import { ThemeToggle, themeLabel, useTheme } from "@/shell/Theme";
 import { useBundleState } from "@/state";
 import { GitActions, GitContext, useGitStatus, type GitTab } from "@/shell/GitActions";
 import { NewView } from "@/views/NewView";
+import { NewEntryDialog } from "@/create/NewEntryDialog";
+import { folderOf, newEntry } from "@/create/newEntry";
 import { frontDoor } from "@/tree";
 import { SectionLabel } from "@/ui/SectionLabel";
 import { NARROW, useMedia } from "@/media";
@@ -98,6 +100,9 @@ export function Shell({
   const path = location.pathname.startsWith("/wiki")
     ? location.pathname.replace(/^\/wiki\/?/, "")
     : "";
+  // Where a new entry starts: the folder of what's on screen (a folder's
+  // listing ends in `/`).
+  const hereFolder = path.endsWith("/") || !path.endsWith(".md") ? "/" + decodeURIComponent(path).replace(/\/$/, "") : folderOf("/" + decodeURIComponent(path));
   // The board you were last on, so the rail returns you to it rather than to
   // whichever one happens to be declared first. A view preference, so it is
   // scoped to this bundle like the rest.
@@ -249,6 +254,9 @@ export function Shell({
         navigate("/graph/" + encodeURIComponent(g.id));
       },
     })),
+    ...(bundle.editable
+      ? [{ title: "New entry…", sub: "a page in this wiki", kind: "Action", run: () => void newEntry({ in: hereFolder }) }]
+      : []),
     { title: "Recently changed", sub: `${unseen.size} unseen`, kind: "View", run: () => navigate("/changed") },
     { title: "Read later", sub: `${saved.size} saved`, kind: "View", run: () => navigate("/read-later") },
   ];
@@ -290,11 +298,26 @@ export function Shell({
       />
     ) : (
       <>
-        <SectionLabel count={bundle.entries} className="pt-3.5 pr-3.5 pb-2 pl-4">
-          Entries
-        </SectionLabel>
+        <div className="flex items-center pr-2">
+          <SectionLabel count={bundle.entries} className="flex-1 pt-3.5 pr-1.5 pb-2 pl-4">
+            Entries
+          </SectionLabel>
+          {bundle.editable && (
+            <IconButton label="New entry" size="xs" onClick={() => void newEntry({ in: hereFolder })} className="mt-1.5">
+              <Glyph size={14}>
+                <path d="M12 5v14M5 12h14" />
+              </Glyph>
+            </IconButton>
+          )}
+        </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-          <Tree node={tree} bundleId={bundle.id} unseen={unseen} saved={saved} />
+          <Tree
+            node={tree}
+            bundleId={bundle.id}
+            unseen={unseen}
+            saved={saved}
+            onNewEntry={bundle.editable ? (folder) => void newEntry({ in: folder }) : undefined}
+          />
         </div>
       </>
     );
@@ -406,6 +429,7 @@ export function Shell({
         <main ref={viewRef} className="relative min-w-0 grow overflow-y-auto">
           <ScrollRestoration containerRef={viewRef} />
           <GitContext value={[git, setGit]}>{children}</GitContext>
+          <NewEntryDialog />
         </main>
       </div>
 

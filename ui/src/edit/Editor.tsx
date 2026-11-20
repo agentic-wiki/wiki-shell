@@ -14,7 +14,7 @@ import {
 } from "@milkdown/preset-commonmark";
 import { insertTableCommand, toggleStrikethroughCommand } from "@milkdown/preset-gfm";
 import type { CmdKey } from "@milkdown/core";
-import { EditorState, NodeSelection, Plugin, TextSelection } from "@milkdown/prose/state";
+import { EditorState, NodeSelection, Plugin, Selection, TextSelection } from "@milkdown/prose/state";
 import { $prose, callCommand } from "@milkdown/utils";
 import type { Node } from "@milkdown/prose/model";
 import type { EditorView } from "@milkdown/prose/view";
@@ -172,7 +172,7 @@ export function Editor({
             linkCard({
               links: new Map(entry.links.map((l) => [l.raw, l])),
               open: (a) => open(a, (to) => go.current(to)),
-              navigate: (to) => go.current(to),
+              path: entry.path,
               destination,
               announce,
             }),
@@ -257,7 +257,15 @@ export function Editor({
       };
       unregister = registerSaves(entry.path, () => saver!.settle());
       goneRef.current = () => setGone({ restore: () => restore(view, made, entry, from), back: false });
-      ready.current({ engine: made, loaded, replay: (early) => replay(view, early) });
+      ready.current({
+        engine: made,
+        loaded,
+        replay: (early) => replay(view, early),
+        focus: () => {
+          view.dispatch(view.state.tr.setSelection(Selection.atEnd(view.state.doc)));
+          view.focus();
+        },
+      });
     })();
     return () => {
       gone = true;
@@ -586,6 +594,8 @@ export interface Mounted {
   /** Puts the caret where the reader was clicked and types what was held.
    *  Called once the editor is on screen, where positions mean something. */
   replay: (early: Early) => void;
+  /** Puts the caret at the end of the body: a page just made opens so. */
+  focus: () => void;
 }
 
 function replay(view: EditorView, early: Early) {

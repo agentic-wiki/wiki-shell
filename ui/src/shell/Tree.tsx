@@ -127,11 +127,14 @@ export function Tree({
   bundleId,
   unseen,
   saved,
+  onNewEntry,
 }: {
   node: TreeNode;
   bundleId: string;
   unseen: Set<string>;
   saved: Set<string>;
+  /** Opens New entry in a folder; absent where nothing can be written. */
+  onNewEntry?: (folder: string) => void;
 }) {
   const location = useLocation();
   const current = decodeURIComponent(location.pathname).replace(/^\/wiki/, "");
@@ -183,6 +186,7 @@ export function Tree({
       unseen={unseen}
       saved={saved}
       groups={groups}
+      onNewEntry={onNewEntry}
     />
   );
 }
@@ -230,6 +234,7 @@ function Level({
   unseen,
   saved,
   groups,
+  onNewEntry,
 }: {
   node: TreeNode;
   depth: number;
@@ -239,6 +244,7 @@ function Level({
   unseen: Set<string>;
   saved: Set<string>;
   groups: Group[];
+  onNewEntry?: (folder: string) => void;
 }) {
   return (
     <ul>
@@ -305,6 +311,19 @@ function Level({
                     since a folder never carries a bookmark. */}
                 {!isOpen && <Marks saved={false} changed={folderHasUnseen(child, unseen)} />}
               </Link>
+              {onNewEntry && (
+                <button
+                  type="button"
+                  aria-label={`New entry in ${child.label ?? child.name}`}
+                  title="New entry here"
+                  onClick={() => onNewEntry(child.path)}
+                  className="text-faint hover:text-fg hover:bg-line grid size-5 shrink-0 place-items-center rounded-[5px] opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                >
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                </button>
+              )}
               <span className="text-faint shrink-0 font-mono text-[11px] font-normal">
                 {child.entries.length + child.children.length}
               </span>
@@ -319,6 +338,7 @@ function Level({
                 unseen={unseen}
                 saved={saved}
                 groups={groups}
+                onNewEntry={onNewEntry}
               />
             )}
           </li>

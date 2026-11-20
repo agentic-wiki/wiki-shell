@@ -1,9 +1,11 @@
+import { folderOf, newEntry, titleOf } from "@/create/newEntry";
+import { relative } from "@/edit/menus";
 import type { Mark, Node } from "@milkdown/prose/model";
 import { Plugin } from "@milkdown/prose/state";
 import type { EditorView } from "@milkdown/prose/view";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { api, type Link } from "@/api";
+import { type Link } from "@/api";
 import { linkTarget } from "@/markdown/href";
 
 /**
@@ -18,7 +20,8 @@ export interface CardPage {
   links: ReadonlyMap<string, Link>;
   /** Follows a link the way a click on it does. */
   open: (a: Element) => void;
-  navigate: (to: string) => void;
+  /** The page's path, which a link's address is relative to. */
+  path: string;
   destination: (bundlePath: string) => string;
   announce: (text: string) => void;
 }
@@ -210,10 +213,19 @@ function Card({
     onDone();
     view.focus();
   };
+  // Through New entry, starting from the address the link names: its folder,
+  // and a title read from its file name, so the default makes that very file
+  // and the link stays as it is (Dessy). Made under another name, the link
+  // follows it; its text never changes.
   const create = async () => {
     if (target.kind !== "entry") return;
-    await api.createEntry(target.link.to, `# ${at.text}\n`).catch(() => {});
-    page.navigate(page.destination(target.link.to));
+    onDone();
+    const before = view.state.doc;
+    const made = await newEntry({ in: folderOf(target.link.to), title: titleOf(target.link.to) });
+    // The page changed meanwhile: the link's place may have moved, so it stays.
+    if (!made || made.path === target.link.to || !view.state.doc.eq(before)) return;
+    const mark = at.mark.type.create({ ...at.mark.attrs, href: relative(page.path, made.path) });
+    view.dispatch(view.state.tr.removeMark(at.from, at.to, at.mark.type).addMark(at.from, at.to, mark));
   };
 
   return (

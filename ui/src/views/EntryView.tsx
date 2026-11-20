@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { api, ApiError, type Backlink, type Entry, type Heading, type Op, type Ref } from "@/api";
 import { isCurrent, recall, remember } from "@/cache";
 import { Markdown } from "@/markdown/Markdown";
@@ -417,12 +417,15 @@ function Body({
   const [partly, setPartly] = useState<string[]>([]);
   // A click in the reader, and the keys typed after it, before the editor is
   // in: held, and replayed in it once it is on screen.
-  const editorRef = useRef<{ replay: (early: Early) => void } | null>(null);
+  const editorRef = useRef<{ replay: (early: Early) => void; focus: () => void } | null>(null);
+  // A page just made opens with the caret in its body (New entry).
+  const caret = (useLocation().state as { caret?: boolean } | null)?.caret === true;
   const early = useEarly(entry.editable && editorPrefetch.enabled && mounted !== entry.path + ":" + epoch);
   useLayoutEffect(() => {
     if (mounted !== entry.path + ":" + epoch || !editorRef.current) return;
     editorRef.current.replay(early.take());
-  }, [mounted, entry.path, epoch, early]);
+    if (caret) editorRef.current.focus();
+  }, [mounted, entry.path, epoch, early, caret]);
   useEffect(() => setKept(keptAll(bundle.id, entry.path)), [bundle.id, entry.path]);
 
   const bar =

@@ -1,3 +1,4 @@
+import { folderOf, newEntry } from "@/create/newEntry";
 import { Plugin, PluginKey, TextSelection } from "@milkdown/prose/state";
 import type { EditorView } from "@milkdown/prose/view";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -50,7 +51,7 @@ interface Item {
   label: string;
   hint: string;
   glyph: string;
-  act: "callout" | "link" | Command;
+  act: "callout" | "link" | "new" | Command;
 }
 
 /** The `/` menu's items, in the design's order. */
@@ -68,6 +69,7 @@ const ITEMS: Item[] = [
   { label: "Table", hint: "Rows and columns", glyph: "▦", act: "table" },
   { label: "Divider", hint: "A line across", glyph: "—", act: "divider" },
   { label: "Link to an entry", hint: "Pick a page of this wiki", glyph: "↗", act: "link" },
+  { label: "New entry", hint: "Create a page, and link to it", glyph: "+", act: "new" },
 ];
 
 export function menus(page: MenuPage): Plugin {
@@ -244,6 +246,7 @@ function Slash({ view, page, from, query, place }: { view: EditorView; page: Men
     view.dispatch(tr);
     if (item.act === "callout") return callout(view);
     if (item.act === "link") return openPicker(view, view.state.selection.from, view.state.selection.from);
+    if (item.act === "new") return void createAndLink(view, page, view.state.selection.from, view.state.selection.from);
     page.run(item.act);
     view.focus();
   };
@@ -318,7 +321,7 @@ function Picker({ view, page, open, place }: { view: EditorView; page: MenuPage;
     : page.entries
         .filter((e) => !q || [e.label, e.title ?? "", e.path].some((s) => s.toLowerCase().includes(q)))
         .slice(0, 8);
-  const options: { label: string; detail: string; href: string; text: string }[] = web
+  const options: { label: string; detail: string; href: string; text: string; create?: boolean }[] = web
     ? [{ label: `Link to ${query.trim()}`, detail: "", href: query.trim(), text: selected && !typed ? selected : query.trim() }]
     : found.map((e) => ({
         label: e.title || e.label,
@@ -326,8 +329,16 @@ function Picker({ view, page, open, place }: { view: EditorView; page: MenuPage;
         href: relative(page.path, e.path),
         text: selected && !typed ? selected : e.title || e.label,
       }));
+  // Last, whenever what's typed names no entry exactly: make it.
+  if (q && !web && !found.some((e) => [e.title ?? "", e.label, e.path.slice(1)].some((s) => s.toLowerCase() === q)))
+    options.push({ label: `New entry “${query.trim()}”`, detail: "", href: "", text: query.trim(), create: true });
 
   const done = (o?: (typeof options)[number]) => {
+    if (o?.create) {
+      view.dispatch(view.state.tr.setMeta(menusKey, "close"));
+      // Over a selection, it stays the link's text; typed, the trigger goes.
+      return void createAndLink(view, page, open.from, open.to, o.text, !!selected && !typed);
+    }
     const tr = view.state.tr.setMeta(menusKey, "close");
     // Closed without a choice: what was typed into the picker after `@` or
     // `[[` stays, as text after it.
@@ -434,6 +445,23 @@ function Toolbar({ view, page, open, left, top }: { view: EditorView; page: Menu
       ))}
     </div>
   );
+}
+
+/**
+ * Opens New entry from the page, then links to what was made at [from, to):
+ * over kept text, that text becomes the link; otherwise the new title is put
+ * there as one. If the page changed while the dialog was open, the link goes
+ * at the caret.
+ */
+async function createAndLink(view: EditorView, page: MenuPage, from: number, to: number, title?: string, keep = false) {
+  const before = view.state.doc;
+  const made = await newEntry({ in: folderOf(page.path), title });
+  if (!made) return view.focus();
+  if (!view.state.doc.eq(before)) from = to = view.state.selection.from;
+  const { schema } = view.state;
+  const link = schema.marks.link!.create({ href: relative(page.path, made.path), title: null });
+  const tr = keep ? view.state.tr.addMark(from, to, link) : view.state.tr.replaceWith(from, to, schema.text(made.title, [link]));
+  view.dispatch(tr);
 }
 
 /** A bundle path made relative to the page it is written in, `./` first. */

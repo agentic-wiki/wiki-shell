@@ -17,6 +17,7 @@ export function SettingsDialog({
   onSubmit,
   onClose,
   action = "Apply",
+  busyLabel = "Applying…",
   footnote = (
     <>
       Writes to the bundle's <span className="font-mono">wiki.toml</span>
@@ -34,6 +35,8 @@ export function SettingsDialog({
   onClose: () => void;
   /** What the submit says: saving settings, or creating the view. */
   action?: string;
+  /** What the button says while it can't be pressed. */
+  busyLabel?: string;
   /** Where Apply writes. A dialog with a field kept elsewhere says so here,
    *  since a footer claiming every field goes to wiki.toml would be wrong. */
   footnote?: ReactNode;
@@ -97,7 +100,7 @@ export function SettingsDialog({
             disabled={busy}
             className="bg-accent text-on-accent h-8.5 rounded-[9px] px-4 font-semibold hover:brightness-110 disabled:opacity-50"
           >
-            {busy ? "Applying…" : action}
+            {busy ? busyLabel : action}
           </button>
         </footer>
       </form>

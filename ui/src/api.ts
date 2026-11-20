@@ -518,7 +518,7 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
     // The server answers errors as JSON; fall back to the status when whatever
     // replied was not the server.
     const body = await res.json().catch(() => null);
-    throw new ApiError(res.status, body?.error ?? res.statusText);
+    throw new ApiError(res.status, body?.error ?? res.statusText, body ?? undefined);
   }
   return res.json() as Promise<T>;
 }
@@ -597,6 +597,18 @@ export const api = {
 
   /** Creates a page with its whole file; refused with 409 when one is there. */
   createEntry: (path: string, content: string) => post<{ version: string }>("/api/entries", { path, content }),
+
+  /**
+   * A new entry's draft: its path (the title's slug, by the wiki's own rules)
+   * and its whole file, which `createEntry` posts unchanged. `in` is a folder,
+   * or an entry whose parts go in a folder beside it. A 409 is a taken path;
+   * a 422, a title, type or place the wiki refuses; both say why.
+   */
+  draftEntry: (into: string, type: string, title: string, signal?: AbortSignal) =>
+    get<{ path: string; content: string }>(
+      "/api/entries/new?" + new URLSearchParams({ in: into, type, title }).toString(),
+      signal,
+    ),
 
   /**
    * Moves a card to another column.

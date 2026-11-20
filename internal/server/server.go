@@ -124,6 +124,7 @@ func (s *Server) routes() []route {
 		{"GET /api/table/{path...}", s.handleTable},
 		{"PUT /api/blocks/{path...}", s.handleSave},
 		{"PUT /api/fields/{path...}", s.handleFields},
+		{"GET /api/entries/new", s.handleDraftEntry},
 		{"POST /api/entries", s.handleCreate},
 		{"PUT /api/card/{id}/{path...}", s.handleCard},
 		{"POST /api/board", s.handleDeclareBoard},
