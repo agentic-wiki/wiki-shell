@@ -34,3 +34,5 @@ The one-implementation rule exists for rules whose disagreement is invisible, li
 Not in this task: opening a table full-width, exporting it, and filtering it. Each is worth having only once sorting and totalling prove the table is where you actually work, and each is cheap to add afterwards.
 
 **Acceptance:** clicking a column header sorts that table, and clicking again reverses it; a numeric column orders by value rather than by text; several tables in one entry sort independently; navigating away and back restores the file's order; nothing about sorting changes the file.
+
+**Note (2026-11-21):** the team's dataset view (typed datasets, then a view to sort and total them) is planned next in the editing epic and may cover this; it waits on the CEO's call on where column types live.

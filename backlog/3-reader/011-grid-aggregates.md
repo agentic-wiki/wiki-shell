@@ -22,3 +22,5 @@ Which function a column shows is a view preference, so it lives in [per-bundle U
 Nothing about it belongs in the file. A total is derived, and writing one into the markdown would make it a number that goes stale silently.
 
 **Acceptance:** a numeric column offers the numeric functions and a text column offers count; the choice survives a reload and does not leak to another bundle; the footer says when cells were skipped; the file is unchanged.
+
+**Note (2026-11-21):** the team's dataset view (typed datasets, then a view to sort and total them) is planned next in the editing epic and may cover this; it waits on the CEO's call on where column types live.

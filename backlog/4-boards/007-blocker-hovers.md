@@ -18,3 +18,7 @@ A task's `blockers` field names the entries that hold it up, and the board alrea
 ## Why it matters
 
 "Is this stuck, and on what" is the first question a board is for, and today it is one click deep in every card. The blockers are already on the board in the data; the hover is just the surface that brings them forward, so the shape of the dependency — what waits on what — reads off the board at a glance instead of being opened card by card.
+
+## Progress (2026-11-21)
+
+A card already says what it waits on: "Waiting on <first blocker>" and "+N" for the rest. Still open: the reverse (what this card holds up) and the hover list that links to each.

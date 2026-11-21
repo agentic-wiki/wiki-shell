@@ -30,3 +30,7 @@ The slug in the filename comes from the title, lowercased and spaced reduced: "D
 ## Why it matters
 
 The board is where you see what needs to happen, and sometimes seeing it is the moment you realize something is missing. Having to leave the board to create the thing you just noticed is a friction that turns "I should make a task for that" into "I'll remember it later." The column is where the work lives; the button is how it gets there.
+
+## Since then (2026-11-21)
+
+Creating an entry shipped as one **New entry** dialog (title, type, where; the file name is the title's slug, no numbers). This card becomes: a column's "+ Add card" opens that dialog with the folder and the column's status pre-filled. The inline form and numbered file names above are dropped, so there is one way to create an entry.

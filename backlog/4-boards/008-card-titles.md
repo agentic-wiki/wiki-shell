@@ -1,7 +1,7 @@
 ---
 type: task
 title: "cards show the entry's title, not its filename"
-status: todo
+status: done
 priority: high
 tags: [bug, boards]
 blockers: []
@@ -21,3 +21,7 @@ The filename is an id and the title is a label, and a board is a wall of labels.
 ## Progress
 
 The card face leads with the entry's frontmatter `title`, falling back to the filename, with the filename beneath when the two differ ([8-design/009](../8-design/009-board.md)). Still open: when there is no `title`, fall back to the body's first heading before the filename. That belongs on the server, in the same place `Card.Title` is read, so the board and the reader keep resolving a name by one rule.
+
+## Outcome (2026-11-21)
+
+Done: the card's title is `wiki`'s `Entry.Title()`, which falls back to the body's first level-1 heading when there is no `title`, and only then the filename. The board and the reader resolve a name by that one rule.

@@ -1,10 +1,10 @@
 ---
 type: task
 title: "editing an entry: a lock, a window, and a write"
-status: todo
+status: done
 priority: high
 tags: [feature, reader, write]
-blockers: [/2-server/004-write-lock.md]
+blockers: []
 ---
 
 The tool's stated goal is to "never become a markdown editor", and this task is the first deliberate step past that line: a way to edit an entry from the UI. Not a full editor — an affordance. The default is view mode; a flip to edit mode gives a markdown editor, the flip back shows the rendered result. Think Notion for the toggle, Obsidian for the editing surface. Simple but comfortable — you should be able to write without fighting the interface, and you should be able to stop writing without ceremony.
@@ -30,3 +30,7 @@ The tool's stated goal is to "never become a markdown editor", and this task is 
 The write goes to the server, which writes the file — the client never touches the bundle directly, which is how every other write in this tool works. The server needs a write endpoint and a lock it can hold and expire, and that is the part this depends on: the reader UI is the easy half, and the server's ability to lock a file and let the lock die on its own is the half that has to be built.
 
 The tension with the goal is real and worth naming: this makes the tool able to edit, and "able to edit" is a door. The lock, the bounded window, the server-held write, and the view-default toggle are what keep the door narrow — a deliberate edit rather than an always-open editor. You edit when you choose to, and you stop when you flip back. The rendered view is still the product; the source is the means to change it.
+
+## Outcome (2026-11-21)
+
+Shipped in v0.20.0, differently: the page is edited where you read it, as in Notion, not in a source view behind a toggle. Saves go block by block, merged with outside changes, with no lock ([004](../2-server/004-write-lock.md) is archived). Blocks the editor can't model are edited as their Markdown, in place.

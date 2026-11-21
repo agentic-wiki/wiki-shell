@@ -1,7 +1,7 @@
 ---
 type: task
 title: "the graph: entries and the links between them"
-status: in-progress
+status: done
 priority: medium
 tags: [feature, graphs]
 ---
@@ -11,7 +11,7 @@ A graph over a slice of the bundle, the way Obsidian draws one: `/graph/<id>`. E
 ## Declared, never built in
 
 ```toml
-[[tool.wikiview.graph]]
+[[graph]]
 id    = "people"
 path  = "/people"
 where = ["type=person"]   # optional, and no default
@@ -94,3 +94,7 @@ Added after first use. Zoom scaled the whole drawing, so zooming in to read made
 Titles are shortened at 24 characters and shown whole on the node you point at; the accessible name is never shortened. Dots are smaller than before, 3–10 px at Medium rather than 4–16.
 
 **Not done:** a spacing slider. Zoom already sets on-screen spacing, and a slider changing the layout's own distances would re-run it and move every node, including ones you placed.
+
+## Outcome (2026-11-21)
+
+Shipped: `/graph/<id>`, declared in the standard's `[[graph]]` table (renamed from `[[tool.wikiview.graph]]` in v0.19.0).

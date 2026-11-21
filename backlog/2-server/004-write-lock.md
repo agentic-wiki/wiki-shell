@@ -1,7 +1,7 @@
 ---
 type: task
 title: "a write lock on an entry, held and self-expiring"
-status: todo
+status: archived
 priority: high
 tags: [feature, server, write]
 blockers: []
@@ -22,3 +22,7 @@ That is the right guard for a single write. It is not enough for an edit that la
 ## Why it is its own task
 
 Editing an entry is the first feature that needs it, and it is the half of that feature that has to be built: the reader UI is the easy part, and the server's ability to hand a file to one editor, keep it from the rest, and take it back when the editor is gone is the part the edit cannot start on. The version and the lock are not alternatives — the lock keeps two humans from editing the same file at once, and the version keeps the writes that do happen from clobbering each other.
+
+## Outcome (2026-11-21)
+
+Not built. Editing shipped in v0.20.0 without a lock: blocks are the unit, a save is merged three ways with what changed on disk, and a block you are typing in is never overwritten (an outside change to it is held for you to choose). Two editors and an agent can work on one page at once, so a lock would only take that away. The reasoning is in the team's editor ADR.

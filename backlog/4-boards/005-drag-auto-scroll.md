@@ -1,7 +1,7 @@
 ---
 type: task
 title: "auto-scroll the board while dragging toward its edges"
-status: todo
+status: done
 priority: high
 tags: [feature, boards, write]
 blockers: []
@@ -20,3 +20,7 @@ Dragging a card to a lane or column near the top or bottom edge of the viewport 
 ## Why it matters
 
 A board with lanes is taller than the screen, and the whole point of a lane is to sort a card by its priority. If the top and bottom lanes are off-screen and the board refuses to scroll for the drag, those lanes are unusable from a drag — a card can only go where the pointer already reaches. Auto-scroll is what makes the full lane range reachable, and it is the difference between "I can move this card" and "I can move this card anywhere."
+
+## Outcome (2026-11-21)
+
+Built: a drag within 72 px of the board's edge scrolls it, faster nearer the edge (`ui/src/views/drag.ts`, `EDGE` and `EDGE_SPEED`).
