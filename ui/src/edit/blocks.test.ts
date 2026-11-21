@@ -262,3 +262,27 @@ test("a paragraph of only spaces or hard breaks sends nothing; an image alone is
   const image = lineup(engine, loaded, blocks, add(schema.nodes.image!.create({ src: "./a.png", alt: "a" })));
   expect(image.map((o) => o.op)).toEqual(["insert"]);
 });
+
+// The CEO's save (msg-1033): an empty list item or to-do was written as
+// "- <br />" / "- [ ] <br />". Until it holds text, it is no block.
+test("an empty list item or to-do sends nothing; typed into, it is an item", () => {
+  const body = "- one\n- [ ] two\n";
+  const blocks: Block[] = [
+    { kind: "item", text: "- one", hash: "a" },
+    { kind: "item", text: "- [ ] two", hash: "b" },
+  ];
+  const loaded = load(engine, body, blocks);
+  const { schema } = loaded.doc.type;
+  const list = loaded.doc.child(0);
+  const end = list.nodeSize - 1; // inside the list, after its last item
+  const item = (checked: boolean | null, text?: string) =>
+    schema.nodes.list_item!.create({ ...list.child(1).attrs, checked }, schema.nodes.paragraph!.create(null, text ? schema.text(text) : null));
+  const empty = EditorState.create({ doc: loaded.doc }).tr.insert(end, item(false)).doc;
+  expect(lineup(engine, loaded, blocks, empty)).toEqual([]);
+  const typed = EditorState.create({ doc: loaded.doc }).tr.insert(end, item(false, "three")).doc;
+  const ops = lineup(engine, loaded, blocks, typed);
+  expect(ops).toHaveLength(1);
+  expect(ops[0]).toMatchObject({ op: "insert", after: 1 });
+  expect((ops[0] as { text: string }).text).toContain("three");
+  expect((ops[0] as { text: string }).text).not.toContain("<br");
+});

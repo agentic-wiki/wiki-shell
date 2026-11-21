@@ -721,7 +721,7 @@ export const streamTiming = { retryMs: 1000, idleMs: 30_000 };
  * the screen. Only a network failure, a `5xx`, or a stream that ended is worth
  * another attempt.
  */
-export function onVersion(handler: (version: number) => void): () => void {
+export function onVersion(handler: (version: number) => void, onReconnect?: () => void): () => void {
   const abort = new AbortController();
   let failures = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -729,6 +729,7 @@ export function onVersion(handler: (version: number) => void): () => void {
   // without touching a connection that has not started yet.
   let attempt: AbortController | undefined;
   let idle: ReturnType<typeof setTimeout> | undefined;
+  let connections = 0;
 
   const run = async (): Promise<void> => {
     attempt = new AbortController();
@@ -754,6 +755,8 @@ export function onVersion(handler: (version: number) => void): () => void {
         idle = setTimeout(() => connection.abort(), streamTiming.idleMs);
       };
       touch();
+      // Connected again, after a restart maybe: the caller may look for a new build.
+      if (connections++ > 0) onReconnect?.();
       for await (const version of versions(res.body, connection.signal, () => {
         // Delivering is what makes a connection real, so this is where the
         // retry budget is refilled — and where the idle clock is reset.

@@ -116,12 +116,17 @@ export function keptAll(bundle: string, path: string): Kept[] {
  */
 export function written(ops: Op[]): Op[] {
   return ops.flatMap((o): Op[] => {
-    const empty = "text" in o && !o.blocks && !(o.text ?? "").trim();
+    const empty = "text" in o && !o.blocks && blankText(o.text ?? "");
     if (o.op === "insert" && empty) return [];
     if (o.op === "replace" && empty) return [{ op: "delete", at: o.at, hash: o.hash }];
     return [o];
   });
 }
+
+/** Text with nothing in it: spaces, or an item's marker, checkbox and a
+ *  `<br />` alone (an empty to-do, as the app wrote one before). */
+const blankText = (text: string) =>
+  text.replace(/^\s*(?:[-*+]|\d+[.)])\s*(?:\[[ xX]\])?/, "").replace(/<br\s*\/?>/gi, "").trim() === "";
 
 /** One editor's kept copy of a page, if it has one. */
 export function keptFor(bundle: string, path: string, session: string): Kept | null {
@@ -173,4 +178,9 @@ export function registerSaves(path: string, settle: () => Promise<void>): () => 
 /** Waits for the saves of a page being edited, if one is. */
 export async function settleSaves(path: string): Promise<void> {
   await saving.get(path)?.();
+}
+
+/** Waits for the saves of every page being edited, as a reload is about to. */
+export async function settleAllSaves(): Promise<void> {
+  await Promise.all([...saving.values()].map((settle) => settle().catch(() => {})));
 }

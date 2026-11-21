@@ -267,6 +267,9 @@ function flatten(node: Node, depth: number, pos = 0, top = 0): Unit[] {
           nested.push([c, at + 1 + o]);
         } else own.push(c);
       });
+      // An empty item or to-do, Enter's in a list, is no block until it holds
+      // text: written, it came out as "- <br />".
+      if (nested.length === 0 && own.every((c) => c.type.name === "paragraph" && blank(c))) return;
       const mine = item.copy(Fragment.from(own));
       // A list's numbering and spacing follow from where an item is, not from
       // what it says: they are not part of its content.

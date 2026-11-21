@@ -12,6 +12,8 @@ All notable changes to WikiShell are documented here. This project follows [sema
 
 ### Fixed
 
+- **An empty list item or to-do is no longer written as `- <br />`**: like an empty paragraph, it's saved once it has text.
+- **One refused save no longer blocks the page's later saves**: only operations the server can take are sent.
 - **Adding a block no longer ends in an edit conflict.** A new empty block (Enter, then a pause, a space or a line break) was saved with no text, refused, and shown as a conflict; it's now saved once it has text, and emptying a block deletes it.
 - **A refused save says "Not saved" with its reason**, keeps your text, and never shows as a conflict.
 - **"Put it back" saves text kept before this fix.**
@@ -22,6 +24,8 @@ All notable changes to WikiShell are documented here. This project follows [sema
 
 ### Changed
 
+- **`[] ` or `[ ] ` at the start of a block makes a to-do**, in a paragraph or a list item.
+- **A tab notices when WikiShell was updated** while it was open, and offers to reload once its saves have settled.
 - **The git pill shows for any repository.** With no upstream it lists the changes and Review changes, without pull or push. A detached HEAD reads "Detached at abc1234", and the changes view says commits there go on no branch; a repository with no commit reads "No commits yet".
 - **The changes view draws a changed block as the reader does**, with its changed words marked once per run.
 - **Discarding a new file asks "Are you sure?"**

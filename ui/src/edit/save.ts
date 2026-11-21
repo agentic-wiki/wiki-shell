@@ -2,7 +2,7 @@ import type { Node } from "@milkdown/prose/model";
 import { ApiError, type Block, type Conflict, type Entry, type Op, type Saved } from "@/api";
 import { applied, lineup, rebase, type Loaded } from "@/edit/blocks";
 import type { Engine } from "@/edit/engine";
-import { dropKept, keptFor, putKept, type SaveState } from "@/editing";
+import { dropKept, keptFor, putKept, written, type SaveState } from "@/editing";
 
 /**
  * Autosave for one page (editor-adr.md, "Autosave"; the design's §2): 800 ms
@@ -180,8 +180,11 @@ export class Saver {
     void this.flush();
   }
 
+  /** What to send: only operations the server takes. A block with no text
+   *  is never sent, so it can't be refused, and a refusal can't carry on into
+   *  every later save. */
   private ops(): Op[] {
-    return lineup(this.deps.engine, this.loaded, this.base.blocks, this.deps.doc());
+    return written(lineup(this.deps.engine, this.loaded, this.base.blocks, this.deps.doc()));
   }
 
   private hashes(): string[] {

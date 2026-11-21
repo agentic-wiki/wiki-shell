@@ -1,7 +1,9 @@
 import { codeBlockSchema, headingSchema, imageSchema, linkSchema, listItemSchema } from "@milkdown/preset-commonmark";
 import { tableSchema } from "@milkdown/preset-gfm";
 import { Fragment, type Mark, type Node, Slice } from "@milkdown/prose/model";
-import { type Command, Plugin, PluginKey, TextSelection } from "@milkdown/prose/state";
+import { type Command, type EditorState, Plugin, PluginKey, TextSelection, type Transaction } from "@milkdown/prose/state";
+import { InputRule, inputRules } from "@milkdown/prose/inputrules";
+import { findWrapping } from "@milkdown/prose/transform";
 import {
   addColumnAfter,
   addColumnBefore,
@@ -59,6 +61,7 @@ export function views(page: Page): MilkdownPlugin[] {
     sourceFocus,
     caretBlock,
     tableCaret,
+    todoShortcut,
     paste(links),
   ];
 }
@@ -327,6 +330,34 @@ function tableView(view: EditorView, getPos: () => number | undefined): NodeView
     stopEvent: (e) => controls.contains(e.target as globalThis.Node),
     ignoreMutation: (m) => !contentDOM.contains(m.target),
   };
+}
+
+/**
+ * `[] ` or `[ ] ` at the start of a block makes it a to-do (the design's
+ * shortcuts, the CEO): a paragraph becomes a list of one to-do; a list item
+ * becomes a to-do item. What was typed goes.
+ */
+const todoShortcut = $prose(() => inputRules({ rules: [new InputRule(/^\[ ?\]\s$/, (state, _match, start, end) => toTodo(state, start, end))] }));
+
+/** The to-do `[] ` makes of the block it was typed at the start of, or null. */
+export function toTodo(state: EditorState, start: number, end: number): Transaction | null {
+  const $start = state.doc.resolve(start);
+  if ($start.parent.type.name !== "paragraph") return null;
+  const tr = state.tr.delete(start, end);
+  const item = $start.depth > 1 ? $start.node(-1) : null;
+  if (item?.type.name === "list_item") {
+    // Already a to-do: what was typed is text.
+    if (item.attrs.checked !== null && item.attrs.checked !== undefined) return null;
+    return tr.setNodeMarkup($start.before(-1), null, { ...item.attrs, checked: false });
+  }
+  const range = tr.doc.resolve(start).blockRange();
+  const list = state.schema.nodes.bullet_list!;
+  const wrapping = range && findWrapping(range, list);
+  if (!range || !wrapping) return null;
+  tr.wrap(range, wrapping);
+  const at = range.start + 1; // the new item
+  tr.setNodeMarkup(at, null, { ...tr.doc.nodeAt(at)!.attrs, checked: false });
+  return tr;
 }
 
 /** Marks the table holding the caret, which then shows its controls; and Tab

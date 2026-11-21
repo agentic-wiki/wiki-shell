@@ -32,3 +32,15 @@ test("a kept copy is put back without its empty blocks", () => {
     { op: "delete", at: 1, hash: "b" },
   ]);
 });
+
+// The CEO's kept copy, from the app before the fix: empty inserts and an
+// empty to-do written as "- [ ] <br />" go; everything typed stays.
+test("a kept copy from before the fix is put back without its empty blocks or <br /> to-dos", () => {
+  const ops = ["", "asdf", "", "123r", "- qkfhqkwef", "- [x] dfasdfasdf", "- [ ] sadkfhjksadhf", "- [ ] <br />"].map(
+    (text) => ({ op: "insert" as const, after: 3, hash: "h", text }),
+  );
+  expect(written(ops).map((o) => (o as { text: string }).text)).toEqual(["asdf", "123r", "- qkfhqkwef", "- [x] dfasdfasdf", "- [ ] sadkfhjksadhf"]);
+  // A number on its own is text, not an empty item.
+  expect(written([{ op: "insert", after: 0, hash: "h", text: "1." }])).toHaveLength(0);
+  expect(written([{ op: "insert", after: 0, hash: "h", text: "2026" }])).toHaveLength(1);
+});

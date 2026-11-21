@@ -139,8 +139,24 @@ try {
   await p.mouse.up();
   check((await p.locator("article .ProseMirror > *").first().innerText()).includes("A heading"), "dragging the handle moves the block");
 
+  // `[] ` and `[ ] ` at a block's start make a to-do (the CEO), in a
+  // paragraph and in a list item.
+  await p.locator("article .ProseMirror > p").last().click();
+  await p.keyboard.press("End");
+  for (const keys of ["[] first todo", "[ ] second todo"]) {
+    await p.keyboard.press("Enter");
+    await p.keyboard.press("Enter");
+    await p.keyboard.type(keys);
+  }
+  await p.keyboard.press("Enter");
+  await p.keyboard.press("Enter");
+  await p.keyboard.type("- a bullet");
+  await p.keyboard.press("Enter");
+  await p.keyboard.type("[] third todo");
+
   await p.waitForTimeout(2000);
   const d = disk();
+  check(["- [ ] first todo", "- [ ] second todo", "- [ ] third todo"].every((t) => d.includes(t)) && !d.includes("\\["), "[] and [ ] make to-dos, in a paragraph and in a list item");
   check(refused.length === 0, `no save was refused${refused.length ? ": " + refused.join(", ") : ""}`);
 
   // A save the server refuses is said as an error, never as a conflict, and

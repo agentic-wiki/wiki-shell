@@ -49,10 +49,16 @@ try {
     seq: 1,
     base: entry.version,
     baseBlocks: entry.blocks.map((b) => b.hash),
+    // As the CEO's (msg-1033): empty inserts between typed blocks, a list,
+    // to-dos, and an empty to-do written as "- [ ] <br />".
     ops: [
       { op: "replace", at: 0, hash: entry.blocks[0].hash, text: "First paragraph. typed" },
-      { op: "insert", after: 0, hash: entry.blocks[0].hash, text: "" },
-      { op: "insert", after: 0, hash: entry.blocks[0].hash, text: "Then typed." },
+      ...["", "Then typed.", "", "123r", "- qkfhqkwef", "- [x] dfasdfasdf", "- [ ] sadkfhjksadhf", "- [ ] <br />"].map((text) => ({
+        op: "insert",
+        after: 0,
+        hash: entry.blocks[0].hash,
+        text,
+      })),
     ],
     at: Date.now(),
   };
@@ -66,7 +72,8 @@ try {
   await p.waitForTimeout(1500);
   const disk = fs.readFileSync(file, "utf8");
   check(refused.length === 0, `Put it back is not refused${refused.length ? ": " + refused.join(", ") : ""}`);
-  check(disk.includes("First paragraph. typed\n\nThen typed.\n\nSecond paragraph."), "the kept text reaches the file, without the empty block");
+  check(disk.includes("First paragraph. typed\n\nThen typed.\n\n123r"), "the kept text reaches the file, without the empty blocks");
+  check(disk.includes("- [x] dfasdfasdf") && disk.includes("- [ ] sadkfhjksadhf") && !disk.includes("<br"), "its list and to-dos too, with no <br />");
   check((await p.getByText("Put it back").count()) === 0, "and the banner goes");
   check(shot.refused.size === 0, "no other host was asked");
 } finally {

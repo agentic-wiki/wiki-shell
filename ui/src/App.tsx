@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 import { api, onTrouble, onVersion, type BundleInfo, type Trouble, type TreeNode } from "@/api";
 import { takeTokenFromUrl } from "@/token";
+import { updated } from "@/update";
+import { settleAllSaves } from "@/editing";
 import { NeedsLink } from "@/views/NeedsLink";
 import { useSeen } from "@/seen";
 import { useQueue, type Queue } from "@/queue";
@@ -121,8 +123,10 @@ export function App() {
       if (v === seen.current) return; // a reconnect repeating itself
       seen.current = v;
       setRefresh((n) => n + 1);
-    });
+    }, () => void updated().then((yes) => yes && setStale(true)));
   }, [trouble, streamAttempt]);
+  // The server was restarted with a newer app than this tab runs.
+  const [stale, setStale] = useState(false);
 
   // Before anything else: a tab without a usable token is not allowed to see, or
   // ask for, the bundle at all. This is the whole screen, so no entry, tree or
@@ -159,6 +163,7 @@ export function App() {
 
   return (
     <ToastProvider>
+      {stale && <UpdatedBar />}
       <Reader bundle={bundle} tree={tree} refresh={refresh} />
     </ToastProvider>
   );
@@ -413,4 +418,27 @@ function findFolder(node: TreeNode, path: string): TreeNode | null {
     if (found) return found;
   }
   return null;
+}
+
+/**
+ * Says WikiShell was updated while this tab was open, and reloads it: a tab
+ * keeps the app it loaded, so it would go on saving as the old one did. What
+ * is being typed is saved first, and anything not saved is kept in the tab.
+ */
+function UpdatedBar() {
+  return (
+    <div role="status" className="bg-accent text-on-accent fixed inset-x-0 top-0 z-90 flex items-center justify-center gap-3 px-4 py-1.5 text-[13px]">
+      WikiShell was updated while this page was open.
+      <button
+        type="button"
+        onClick={async () => {
+          await settleAllSaves();
+          location.reload();
+        }}
+        className="rounded-md bg-white/20 px-2.5 py-0.5 font-semibold hover:bg-white/30"
+      >
+        Reload
+      </button>
+    </div>
+  );
 }
